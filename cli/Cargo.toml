@@ -1,0 +1,17 @@
+[package]
+name = "dstack-mr-cli"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "dstack-mr"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4.0", features = ["derive"] }
+dstack-mr = { path = ".." }
+anyhow = "1.0"
+hex = "0.4"
+fs-err = "2.11"
+serde_json = "1.0"
+tracing-subscriber = "0.3"

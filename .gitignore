@@ -1,0 +1,27 @@
+# Rust build artifacts
+/target/
+/*/target/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Backup files
+*.bak
+*.orig
+*.tmp
+
+# Log files
+*.log
