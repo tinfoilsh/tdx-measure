@@ -84,10 +84,22 @@ fn main() -> Result<()> {
             let image_info: ImageInfo =
                 serde_json::from_str(&metadata).context("Failed to parse image metadata")?;
             let parent_dir = config.metadata.parent().unwrap_or(".".as_ref());
+            
+            // Image paths
             let firmware_path = parent_dir.join(&image_info.bios).display().to_string();
             let kernel_path = parent_dir.join(&image_info.kernel).display().to_string();
             let initrd_path = parent_dir.join(&image_info.initrd).display().to_string();
             let cmdline = image_info.cmdline + " initrd=initrd";
+            
+            // Machine paths
+            let acpi_tables_path = parent_dir.join(&image_info.acpi_tables).display().to_string();
+            let rsdp_path = parent_dir.join(&image_info.rsdp).display().to_string();
+            let table_loader_path = parent_dir.join(&image_info.table_loader).display().to_string();
+            let boot_order_path = parent_dir.join(&image_info.boot_order).display().to_string();
+            let boot_0000_path = parent_dir.join(&image_info.boot_0000).display().to_string();
+            let boot_0001_path = parent_dir.join(&image_info.boot_0001).display().to_string();
+            let boot_0006_path = parent_dir.join(&image_info.boot_0006).display().to_string();
+            let boot_0007_path = parent_dir.join(&image_info.boot_0007).display().to_string();
 
             let machine = Machine::builder()
                 .cpu_count(config.cpu)
@@ -96,6 +108,14 @@ fn main() -> Result<()> {
                 .kernel(&kernel_path)
                 .initrd(&initrd_path)
                 .kernel_cmdline(&cmdline)
+                .acpi_tables(&acpi_tables_path)
+                .rsdp(&rsdp_path)
+                .table_loader(&table_loader_path)
+                .boot_order(&boot_order_path)
+                .boot_0000(&boot_0000_path)
+                .boot_0001(&boot_0001_path)
+                .boot_0006(&boot_0006_path)
+                .boot_0007(&boot_0007_path)
                 .two_pass_add_pages(config.two_pass_add_pages)
                 .pic(config.pic)
                 .smm(config.smm)

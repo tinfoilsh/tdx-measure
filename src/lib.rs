@@ -32,4 +32,12 @@ pub struct ImageInfo {
     pub kernel: String,
     pub initrd: String,
     pub bios: String,
+    pub acpi_tables: String,
+    pub rsdp: String,
+    pub table_loader: String,
+    pub boot_order: String,
+    pub boot_0000: String,
+    pub boot_0001: String,
+    pub boot_0006: String,
+    pub boot_0007: String,
 }

@@ -17,15 +17,9 @@ pub struct Tables {
 
 impl Machine<'_> {
     fn create_tables(&self) -> Result<Vec<u8>> {
-        // Option 1: Use a hardcoded file path
-        let tables_path = "acpi_tables.bin";
-        
-        // Option 2: Make it configurable via Machine struct
-        // You would need to add a field like `acpi_tables_file: Option<&'a str>` to Machine
-        
-        match std::fs::read(tables_path) {
+        match std::fs::read(self.acpi_tables) {
             Ok(data) => {
-                debug!("Loaded ACPI tables from file: {} ({} bytes)", tables_path, data.len());
+                debug!("Loaded ACPI tables from file: {} ({} bytes)", self.acpi_tables, data.len());
                 Ok(data)
             }
             Err(e) => {
@@ -179,14 +173,12 @@ impl Machine<'_> {
     }
 
     fn load_rsdp(&self, rsdt_info: Option<(u32, u32, u32)>) -> Result<Vec<u8>> {
-        let rsdp_path = "rsdp.bin";
-        
         // Always generate the RSDP first for comparison
         let generated_rsdp = self.generate_rsdp(rsdt_info)?;
         
-        match std::fs::read(rsdp_path) {
+        match std::fs::read(self.rsdp) {
             Ok(file_rsdp) => {
-                debug!("Loaded RSDP from file: {} ({} bytes)", rsdp_path, file_rsdp.len());
+                debug!("Loaded RSDP from file: {} ({} bytes)", self.rsdp, file_rsdp.len());
                 debug!("Generated RSDP size: {} bytes", generated_rsdp.len());
                 
                 // Compare the two RSDPs
@@ -219,7 +211,6 @@ impl Machine<'_> {
                 Ok(file_rsdp)
             }
             Err(e) => {
-                // Fallback to generated RSDP if file doesn't exist
                 debug!("Failed to load RSDP from file: {}, using generated RSDP", e);
                 Ok(generated_rsdp)
             }
@@ -247,9 +238,6 @@ impl Machine<'_> {
                         mcfg_offset: u32, mcfg_csum: u32, mcfg_len: u32,
                         waet_offset: u32, waet_csum: u32, waet_len: u32,
                         rsdt_info: Option<(u32, u32, u32)>) -> Result<Vec<u8>> {
-        let loader_path = "table_loader.bin";
-        
-        // Always generate the table loader first for comparison
         let generated_loader = self.generate_table_loader(
             dsdt_offset, dsdt_csum, dsdt_len,
             facp_offset, facp_csum, facp_len,
@@ -259,9 +247,9 @@ impl Machine<'_> {
             rsdt_info
         )?;
         
-        match std::fs::read(loader_path) {
+        match std::fs::read(self.table_loader) {
             Ok(file_loader) => {
-                debug!("Loaded table loader from file: {} ({} bytes)", loader_path, file_loader.len());
+                debug!("Loaded table loader from file: {} ({} bytes)", self.table_loader, file_loader.len());
                 debug!("Generated table loader size: {} bytes", generated_loader.len());
                 
                 // Compare the two table loaders

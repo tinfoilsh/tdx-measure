@@ -264,14 +264,13 @@ impl<'a> Tdvf<'a> {
         let td_hob_hash = self.measure_td_hob(machine.memory_size)?;
         let cfv_image_hash = hex!("344BC51C980BA621AAA00DA3ED7436F7D6E549197DFE699515DFA2C6583D95E6412AF21C097D473155875FFD561D6790");
         
-        // Load boot variable data from file
-        let boot_order_data = read_boot_variable_data("BootOrder.bin")?;
-        let boot0007_data = read_boot_variable_data("Boot0007.bin")?;
-        let boot0001_data = read_boot_variable_data("Boot0001.bin")?;
-        let boot0000_data = read_boot_variable_data("Boot0000.bin")?;
-        let boot0006_data = read_boot_variable_data("Boot0006.bin")?;
+        // Load boot variable data from files
+        let boot_order_data = read_boot_variable_data(machine.boot_order)?;
+        let boot0007_data = read_boot_variable_data(machine.boot_0007)?;
+        let boot0001_data = read_boot_variable_data(machine.boot_0001)?;
+        let boot0000_data = read_boot_variable_data(machine.boot_0000)?;
+        let boot0006_data = read_boot_variable_data(machine.boot_0006)?;
         
-        // Keep hardcoded hashes for other boot variables (or read from files as needed)
         let tables = machine.build_tables()?;
         let acpi_tables_hash = measure_sha384(&tables.tables);
         let acpi_rsdp_hash = measure_sha384(&tables.rsdp);
