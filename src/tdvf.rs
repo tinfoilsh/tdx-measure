@@ -1,7 +1,6 @@
 use anyhow::{anyhow, bail, Context, Result};
 use hex_literal::hex;
 use sha2::{Digest, Sha384};
-use log::debug;
 
 use crate::num::read_le;
 use crate::util::debug_print_log;
