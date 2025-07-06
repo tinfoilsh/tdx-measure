@@ -1,6 +1,6 @@
 use anyhow::{Context, Result, anyhow};
 use clap::{Parser, Subcommand};
-use dstack_mr::{Machine, ImageInfo};
+use dstack_mr::{Machine, ImageInfo, TdxMeasurements};
 use fs_err as fs;
 use std::path::PathBuf;
 
@@ -75,6 +75,10 @@ struct MachineConfig {
     /// Output JSON to file
     #[arg(long)]
     json_file: Option<PathBuf>,
+
+    /// Print RTMR0 only
+    #[arg(long)]
+    rtmr0_only: bool,
 }
 
 fn main() -> Result<()> {
@@ -133,9 +137,16 @@ fn main() -> Result<()> {
                 .root_verity(config.root_verity)
                 .build();
 
-            let measurements = machine
-                .measure()
-                .context("Failed to measure machine configuration")?;
+            let measurements = if config.rtmr0_only {
+                TdxMeasurements {
+                    mrtd: vec![],
+                    rtmr0: machine.measure_rtmr0()?,
+                    rtmr1: vec![],
+                    rtmr2: vec![],
+                }
+            } else {
+                machine.measure().context("Failed to measure machine configuration")?
+            };
 
             if config.json {
                 println!("{}", serde_json::to_string_pretty(&measurements).unwrap());

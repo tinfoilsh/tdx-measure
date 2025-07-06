@@ -16,12 +16,15 @@ mod util;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TdxMeasurements {
     #[serde(with = "hex_bytes")]
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub mrtd: Vec<u8>,
     #[serde(with = "hex_bytes")]
     pub rtmr0: Vec<u8>,
     #[serde(with = "hex_bytes")]
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub rtmr1: Vec<u8>,
     #[serde(with = "hex_bytes")]
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub rtmr2: Vec<u8>,
 }
 

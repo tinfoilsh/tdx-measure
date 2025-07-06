@@ -67,4 +67,10 @@ impl Machine<'_> {
             rtmr2,
         })
     }
+
+    pub fn measure_rtmr0(&self) -> Result<Vec<u8>> {
+        let fw_data = fs::read(self.firmware)?;
+        let tdvf = Tdvf::parse(&fw_data).context("Failed to parse TDVF metadata")?;
+        tdvf.rtmr0(self).context("Failed to compute RTMR0")
+    }
 }
