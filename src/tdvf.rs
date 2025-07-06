@@ -1,6 +1,7 @@
 use anyhow::{anyhow, bail, Context, Result};
 use hex_literal::hex;
 use sha2::{Digest, Sha384};
+use log::debug;
 
 use crate::num::read_le;
 use crate::util::debug_print_log;
@@ -63,12 +64,23 @@ fn encode_guid(guid_str: &str) -> Result<Vec<u8>> {
 }
 
 /// Measures an EFI variable event.
-fn measure_tdx_efi_variable(vendor_guid: &str, var_name: &str) -> Result<Vec<u8>> {
+fn measure_tdx_efi_variable(vendor_guid: &str, var_name: &str, var_data: Option<&[u8]>) -> Result<Vec<u8>> {
     let mut data = Vec::new();
     data.extend_from_slice(&encode_guid(vendor_guid)?);
     data.extend_from_slice(&(var_name.len() as u64).to_le_bytes());
-    data.extend_from_slice(&0u64.to_le_bytes());
+    
+    // Include variable data size
+    let data_size = var_data.map_or(0, |d| d.len()) as u64;
+    data.extend_from_slice(&data_size.to_le_bytes());
+    
+    // Add variable name (UTF-16 encoded)
     data.extend(utf16_encode(var_name));
+    
+    // Add variable data if present
+    if let Some(var_data) = var_data {
+        data.extend_from_slice(var_data);
+    }
+    
     Ok(measure_sha384(&data))
 }
 
@@ -232,6 +244,9 @@ impl<'a> Tdvf<'a> {
         let boot000_hash = hex!("23ADA07F5261F12F34A0BD8E46760962D6B4D576A416F1FEA1C64BC656B1D28EACF7047AE6E967C58FD2A98BFA74C298");
 
         let tables = machine.build_tables()?;
+        // debug!("tables.tables: {:?}", &tables.tables);
+        // debug!("tables.rsdp: {:?}", &tables.rsdp);
+        // debug!("tables.loader: {:?}", &tables.loader);
         let acpi_tables_hash = measure_sha384(&tables.tables);
         let acpi_rsdp_hash = measure_sha384(&tables.rsdp);
         let acpi_loader_hash = measure_sha384(&tables.loader);
@@ -241,16 +256,17 @@ impl<'a> Tdvf<'a> {
         let rtmr0_log = vec![
             td_hob_hash,
             cfv_image_hash.to_vec(),
-            measure_tdx_efi_variable("8BE4DF61-93CA-11D2-AA0D-00E098032B8C", "SecureBoot")?,
-            measure_tdx_efi_variable("8BE4DF61-93CA-11D2-AA0D-00E098032B8C", "PK")?,
-            measure_tdx_efi_variable("8BE4DF61-93CA-11D2-AA0D-00E098032B8C", "KEK")?,
-            measure_tdx_efi_variable("D719B2CB-3D3A-4596-A3BC-DAD00E67656F", "db")?,
-            measure_tdx_efi_variable("D719B2CB-3D3A-4596-A3BC-DAD00E67656F", "dbx")?,
+            measure_tdx_efi_variable("8BE4DF61-93CA-11D2-AA0D-00E098032B8C", "SecureBoot", None)?,
+            measure_tdx_efi_variable("8BE4DF61-93CA-11D2-AA0D-00E098032B8C", "PK", None)?,
+            measure_tdx_efi_variable("8BE4DF61-93CA-11D2-AA0D-00E098032B8C", "KEK", None)?,
+            measure_tdx_efi_variable("D719B2CB-3D3A-4596-A3BC-DAD00E67656F", "db", None)?,
+            measure_tdx_efi_variable("D719B2CB-3D3A-4596-A3BC-DAD00E67656F", "dbx", None)?,
             measure_sha384(&[0x00, 0x00, 0x00, 0x00]), // Separator
             acpi_loader_hash,
             acpi_rsdp_hash,
             acpi_tables_hash,
             measure_sha384(&[0x00, 0x00]), // BootOrder
+            measure_tdx_efi_variable("8BE4DF61-93CA-11D2-AA0D-00E098032B8C", "BootOrder", Some(b"/pci@i0cf8/scsi@2/disk@0,0"))?,
             boot000_hash.to_vec(),
         ];
         debug_print_log("RTMR0", &rtmr0_log);

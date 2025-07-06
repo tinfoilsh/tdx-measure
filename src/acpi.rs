@@ -17,6 +17,27 @@ pub struct Tables {
 
 impl Machine<'_> {
     fn create_tables(&self) -> Result<Vec<u8>> {
+        // Option 1: Use a hardcoded file path
+        let tables_path = "acpi_tables.bin";
+        
+        // Option 2: Make it configurable via Machine struct
+        // You would need to add a field like `acpi_tables_file: Option<&'a str>` to Machine
+        
+        match std::fs::read(tables_path) {
+            Ok(data) => {
+                debug!("Loaded ACPI tables from file: {} ({} bytes)", tables_path, data.len());
+                Ok(data)
+            }
+            Err(e) => {
+                // Fallback to original behavior if file doesn't exist
+                debug!("Failed to load ACPI tables from file: {}, falling back to dstack-acpi-tables", e);
+                self.create_tables_with_dstack()
+            }
+        }
+    }
+
+    // Rename the original method as a fallback
+    fn create_tables_with_dstack(&self) -> Result<Vec<u8>> {
         if self.cpu_count == 0 {
             bail!("cpuCount must be greater than 0");
         }
@@ -157,24 +178,137 @@ impl Machine<'_> {
         Ok(output.stdout)
     }
 
-    pub fn build_tables(&self) -> Result<Tables> {
-        let tpl = self.create_tables()?;
-        // Find all required ACPI tables
-        let (dsdt_offset, dsdt_csum, dsdt_len) = find_acpi_table(&tpl, "DSDT")?;
-        let (facp_offset, facp_csum, facp_len) = find_acpi_table(&tpl, "FACP")?;
-        let (apic_offset, apic_csum, apic_len) = find_acpi_table(&tpl, "APIC")?;
-        let (mcfg_offset, mcfg_csum, mcfg_len) = find_acpi_table(&tpl, "MCFG")?;
-        let (waet_offset, waet_csum, waet_len) = find_acpi_table(&tpl, "WAET")?;
-        let (rsdt_offset, rsdt_csum, rsdt_len) = find_acpi_table(&tpl, "RSDT")?;
+    fn load_rsdp(&self, rsdt_info: Option<(u32, u32, u32)>) -> Result<Vec<u8>> {
+        let rsdp_path = "rsdp.bin";
+        
+        // Always generate the RSDP first for comparison
+        let generated_rsdp = self.generate_rsdp(rsdt_info)?;
+        
+        match std::fs::read(rsdp_path) {
+            Ok(file_rsdp) => {
+                debug!("Loaded RSDP from file: {} ({} bytes)", rsdp_path, file_rsdp.len());
+                debug!("Generated RSDP size: {} bytes", generated_rsdp.len());
+                
+                // Compare the two RSDPs
+                if file_rsdp == generated_rsdp {
+                    debug!("File RSDP matches generated RSDP exactly");
+                } else {
+                    debug!("File RSDP differs from generated RSDP");
+                    
+                    // Compare sizes
+                    if file_rsdp.len() != generated_rsdp.len() {
+                        debug!("Size difference: file={} bytes, generated={} bytes", 
+                               file_rsdp.len(), generated_rsdp.len());
+                    }
+                    
+                    // Compare byte by byte for first differences
+                    let min_len = file_rsdp.len().min(generated_rsdp.len());
+                    for i in 0..min_len {
+                        if file_rsdp[i] != generated_rsdp[i] {
+                            debug!("First difference at byte {}: file=0x{:02x}, generated=0x{:02x}", 
+                                   i, file_rsdp[i], generated_rsdp[i]);
+                            break;
+                        }
+                    }
+                    
+                    // Show hex dumps for comparison
+                    debug!("File RSDP hex dump: {:02x?}", file_rsdp);
+                    debug!("Generated RSDP hex dump: {:02x?}", generated_rsdp);
+                }
+                
+                Ok(file_rsdp)
+            }
+            Err(e) => {
+                // Fallback to generated RSDP if file doesn't exist
+                debug!("Failed to load RSDP from file: {}, using generated RSDP", e);
+                Ok(generated_rsdp)
+            }
+        }
+    }
 
+    fn generate_rsdp(&self, rsdt_info: Option<(u32, u32, u32)>) -> Result<Vec<u8>> {
         // Generate RSDP
         let mut rsdp = Vec::with_capacity(20);
         rsdp.extend_from_slice(b"RSD PTR "); // Signature
         rsdp.push(0x00); // Checksum placeholder
         rsdp.extend_from_slice(b"BOCHS "); // OEM ID
         rsdp.push(0x00); // Revision
+        
+        // If we have RSDT, use its offset, otherwise use 0
+        let rsdt_offset = rsdt_info.map(|(offset, _, _)| offset).unwrap_or(0);
         rsdp.extend_from_slice(&rsdt_offset.to_le_bytes()); // RSDT Address
+        
+        Ok(rsdp)
+    }
 
+    fn load_table_loader(&self, dsdt_offset: u32, dsdt_csum: u32, dsdt_len: u32,
+                        facp_offset: u32, facp_csum: u32, facp_len: u32,
+                        apic_offset: u32, apic_csum: u32, apic_len: u32,
+                        mcfg_offset: u32, mcfg_csum: u32, mcfg_len: u32,
+                        waet_offset: u32, waet_csum: u32, waet_len: u32,
+                        rsdt_info: Option<(u32, u32, u32)>) -> Result<Vec<u8>> {
+        let loader_path = "table_loader.bin";
+        
+        // Always generate the table loader first for comparison
+        let generated_loader = self.generate_table_loader(
+            dsdt_offset, dsdt_csum, dsdt_len,
+            facp_offset, facp_csum, facp_len,
+            apic_offset, apic_csum, apic_len,
+            mcfg_offset, mcfg_csum, mcfg_len,
+            waet_offset, waet_csum, waet_len,
+            rsdt_info
+        )?;
+        
+        match std::fs::read(loader_path) {
+            Ok(file_loader) => {
+                debug!("Loaded table loader from file: {} ({} bytes)", loader_path, file_loader.len());
+                debug!("Generated table loader size: {} bytes", generated_loader.len());
+                
+                // Compare the two table loaders
+                if file_loader == generated_loader {
+                    debug!("File table loader matches generated table loader exactly");
+                } else {
+                    debug!("File table loader differs from generated table loader");
+                    
+                    // Compare sizes
+                    if file_loader.len() != generated_loader.len() {
+                        debug!("Size difference: file={} bytes, generated={} bytes", 
+                               file_loader.len(), generated_loader.len());
+                    }
+                    
+                    // Compare byte by byte for first differences
+                    let min_len = file_loader.len().min(generated_loader.len());
+                    for i in 0..min_len {
+                        if file_loader[i] != generated_loader[i] {
+                            debug!("First difference at byte {}: file=0x{:02x}, generated=0x{:02x}", 
+                                   i, file_loader[i], generated_loader[i]);
+                            break;
+                        }
+                    }
+                    
+                    // Show hex dumps for comparison (first 128 bytes to avoid too much output)
+                    let file_sample = &file_loader[..file_loader.len().min(128)];
+                    let gen_sample = &generated_loader[..generated_loader.len().min(128)];
+                    debug!("File table loader hex dump (first 128 bytes): {:02x?}", file_sample);
+                    debug!("Generated table loader hex dump (first 128 bytes): {:02x?}", gen_sample);
+                }
+                
+                Ok(file_loader)
+            }
+            Err(e) => {
+                // Fallback to generated table loader if file doesn't exist
+                debug!("Failed to load table loader from file: {}, using generated table loader", e);
+                Ok(generated_loader)
+            }
+        }
+    }
+
+    fn generate_table_loader(&self, dsdt_offset: u32, dsdt_csum: u32, dsdt_len: u32,
+                            facp_offset: u32, facp_csum: u32, facp_len: u32,
+                            apic_offset: u32, apic_csum: u32, apic_len: u32,
+                            mcfg_offset: u32, mcfg_csum: u32, mcfg_len: u32,
+                            waet_offset: u32, waet_csum: u32, waet_len: u32,
+                            rsdt_info: Option<(u32, u32, u32)>) -> Result<Vec<u8>> {
         // Generate table loader commands
         let mut ldr = TableLoader::new();
         ldr.append(LoaderCmd::Allocate {
@@ -187,6 +321,8 @@ impl Machine<'_> {
             alignment: 64,
             zone: 1,
         });
+        
+        // Add loader commands for existing tables
         ldr.append(LoaderCmd::AddChecksum {
             file: "etc/acpi/tables",
             result_offset: dsdt_csum,
@@ -235,36 +371,41 @@ impl Machine<'_> {
             start: waet_offset,
             length: waet_len,
         });
-        ldr.append(LoaderCmd::AddPtr {
-            pointer_file: "etc/acpi/tables",
-            pointee_file: "etc/acpi/tables",
-            pointer_offset: rsdt_offset + 36,
-            pointer_size: 4,
-        });
-        ldr.append(LoaderCmd::AddPtr {
-            pointer_file: "etc/acpi/tables",
-            pointee_file: "etc/acpi/tables",
-            pointer_offset: rsdt_offset + 40,
-            pointer_size: 4,
-        });
-        ldr.append(LoaderCmd::AddPtr {
-            pointer_file: "etc/acpi/tables",
-            pointee_file: "etc/acpi/tables",
-            pointer_offset: rsdt_offset + 44,
-            pointer_size: 4,
-        });
-        ldr.append(LoaderCmd::AddPtr {
-            pointer_file: "etc/acpi/tables",
-            pointee_file: "etc/acpi/tables",
-            pointer_offset: rsdt_offset + 48,
-            pointer_size: 4,
-        });
-        ldr.append(LoaderCmd::AddChecksum {
-            file: "etc/acpi/tables",
-            result_offset: rsdt_csum,
-            start: rsdt_offset,
-            length: rsdt_len,
-        });
+        
+        // Only add RSDT-related commands if RSDT exists
+        if let Some((rsdt_offset, rsdt_csum, rsdt_len)) = rsdt_info {
+            ldr.append(LoaderCmd::AddPtr {
+                pointer_file: "etc/acpi/tables",
+                pointee_file: "etc/acpi/tables",
+                pointer_offset: rsdt_offset + 36,
+                pointer_size: 4,
+            });
+            ldr.append(LoaderCmd::AddPtr {
+                pointer_file: "etc/acpi/tables",
+                pointee_file: "etc/acpi/tables",
+                pointer_offset: rsdt_offset + 40,
+                pointer_size: 4,
+            });
+            ldr.append(LoaderCmd::AddPtr {
+                pointer_file: "etc/acpi/tables",
+                pointee_file: "etc/acpi/tables",
+                pointer_offset: rsdt_offset + 44,
+                pointer_size: 4,
+            });
+            ldr.append(LoaderCmd::AddPtr {
+                pointer_file: "etc/acpi/tables",
+                pointee_file: "etc/acpi/tables",
+                pointer_offset: rsdt_offset + 48,
+                pointer_size: 4,
+            });
+            ldr.append(LoaderCmd::AddChecksum {
+                file: "etc/acpi/tables",
+                result_offset: rsdt_csum,
+                start: rsdt_offset,
+                length: rsdt_len,
+            });
+        }
+        
         ldr.append(LoaderCmd::AddPtr {
             pointer_file: "etc/acpi/rsdp",
             pointee_file: "etc/acpi/tables",
@@ -277,15 +418,44 @@ impl Machine<'_> {
             start: 0,
             length: 20,
         });
-        // 8. Pad the loader command blob to the required length
+        
+        // Pad the loader command blob to the required length
         if ldr.buffer.len() < LDR_LENGTH {
             ldr.buffer.resize(LDR_LENGTH, 0);
         }
 
+        Ok(ldr.buffer)
+    }
+
+    pub fn build_tables(&self) -> Result<Tables> {
+        let tpl = self.create_tables()?;
+        // Find all required ACPI tables
+        let (dsdt_offset, dsdt_csum, dsdt_len) = find_acpi_table(&tpl, "DSDT")?;
+        let (facp_offset, facp_csum, facp_len) = find_acpi_table(&tpl, "FACP")?;
+        let (apic_offset, apic_csum, apic_len) = find_acpi_table(&tpl, "APIC")?;
+        let (mcfg_offset, mcfg_csum, mcfg_len) = find_acpi_table(&tpl, "MCFG")?;
+        let (waet_offset, waet_csum, waet_len) = find_acpi_table(&tpl, "WAET")?;
+        
+        // Try to find RSDT, but make it optional
+        let rsdt_info = find_acpi_table(&tpl, "RSDT").ok();
+
+        // Load RSDP from file or generate it (with comparison)
+        let rsdp = self.load_rsdp(rsdt_info)?;
+
+        // Load table loader from file or generate it (with comparison)
+        let loader = self.load_table_loader(
+            dsdt_offset, dsdt_csum, dsdt_len,
+            facp_offset, facp_csum, facp_len,
+            apic_offset, apic_csum, apic_len,
+            mcfg_offset, mcfg_csum, mcfg_len,
+            waet_offset, waet_csum, waet_len,
+            rsdt_info
+        )?;
+
         Ok(Tables {
             tables: tpl,
             rsdp,
-            loader: ldr.buffer,
+            loader,
         })
     }
 }

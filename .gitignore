@@ -25,3 +25,7 @@ Thumbs.db
 
 # Log files
 *.log
+
+# Binary files
+*.bin
+*.json
