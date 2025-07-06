@@ -1,6 +1,9 @@
 use anyhow::{anyhow, bail, Context, Result};
 use hex_literal::hex;
 use sha2::{Digest, Sha384};
+use log::debug;
+use std::fs;
+use std::path::Path;
 
 use crate::num::read_le;
 use crate::util::debug_print_log;
@@ -81,6 +84,26 @@ fn measure_tdx_efi_variable(vendor_guid: &str, var_name: &str, var_data: Option<
     }
     
     Ok(measure_sha384(&data))
+}
+
+// Add this helper function to read boot variable data
+fn read_boot_variable_data(filename: &str) -> Result<Option<Vec<u8>>> {
+    let path = Path::new(filename);
+    if path.exists() {
+        match fs::read(path) {
+            Ok(data) => {
+                debug!("Loaded {} bytes from {}", data.len(), filename);
+                Ok(Some(data))
+            }
+            Err(e) => {
+                debug!("Failed to read {}: {}", filename, e);
+                Ok(None)
+            }
+        }
+    } else {
+        debug!("File {} not found, using None for variable data", filename);
+        Ok(None)
+    }
 }
 
 impl<'a> Tdvf<'a> {
@@ -240,18 +263,21 @@ impl<'a> Tdvf<'a> {
     pub fn rtmr0(&self, machine: &Machine) -> Result<Vec<u8>> {
         let td_hob_hash = self.measure_td_hob(machine.memory_size)?;
         let cfv_image_hash = hex!("344BC51C980BA621AAA00DA3ED7436F7D6E549197DFE699515DFA2C6583D95E6412AF21C097D473155875FFD561D6790");
-        let boot000_hash = hex!("23ADA07F5261F12F34A0BD8E46760962D6B4D576A416F1FEA1C64BC656B1D28EACF7047AE6E967C58FD2A98BFA74C298");
-
+        
+        // Load boot variable data from file
+        let boot_order_data = read_boot_variable_data("BootOrder.bin")?;
+        let boot0007_data = read_boot_variable_data("Boot0007.bin")?;
+        let boot0001_data = read_boot_variable_data("Boot0001.bin")?;
+        let boot0000_data = read_boot_variable_data("Boot0000.bin")?;
+        let boot0006_data = read_boot_variable_data("Boot0006.bin")?;
+        
+        // Keep hardcoded hashes for other boot variables (or read from files as needed)
         let tables = machine.build_tables()?;
-        // debug!("tables.tables: {:?}", &tables.tables);
-        // debug!("tables.rsdp: {:?}", &tables.rsdp);
-        // debug!("tables.loader: {:?}", &tables.loader);
         let acpi_tables_hash = measure_sha384(&tables.tables);
         let acpi_rsdp_hash = measure_sha384(&tables.rsdp);
         let acpi_loader_hash = measure_sha384(&tables.loader);
 
         // RTMR0 calculation
-
         let rtmr0_log = vec![
             td_hob_hash,
             cfv_image_hash.to_vec(),
@@ -264,9 +290,11 @@ impl<'a> Tdvf<'a> {
             acpi_loader_hash,
             acpi_rsdp_hash,
             acpi_tables_hash,
-            measure_sha384(&[0x00, 0x00]), // BootOrder
-            measure_tdx_efi_variable("8BE4DF61-93CA-11D2-AA0D-00E098032B8C", "BootOrder", Some(b"/pci@i0cf8/scsi@2/disk@0,0"))?,
-            boot000_hash.to_vec(),
+            measure_sha384(&boot_order_data.unwrap()),
+            measure_sha384(&boot0007_data.unwrap()),
+            measure_sha384(&boot0001_data.unwrap()),
+            measure_sha384(&boot0000_data.unwrap()),
+            measure_sha384(&boot0006_data.unwrap()),
         ];
         debug_print_log("RTMR0", &rtmr0_log);
         Ok(measure_log(&rtmr0_log))
