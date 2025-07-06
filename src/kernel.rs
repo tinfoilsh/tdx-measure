@@ -2,6 +2,99 @@ use crate::{measure_log, measure_sha384, num::read_le, utf16_encode, util::debug
 use anyhow::{bail, Context, Result};
 use object::pe;
 use sha2::{Digest, Sha384};
+use std::fs::File;
+use std::io::{Read, Seek, SeekFrom};
+use std::path::Path;
+use std::process::Command;
+
+/// Represents extracted bootloader components from a disk image
+#[derive(Debug)]
+pub struct BootloaderComponents {
+    pub gpt_data: Vec<u8>,
+    pub shim_data: Vec<u8>,
+    pub grub_data: Vec<u8>,
+}
+
+/// Extracts bootloader components from a qcow2 disk image
+pub fn extract_bootloader_components(qcow2_path: &str) -> Result<BootloaderComponents> {
+    let temp_dir = std::env::temp_dir().join("tdx_bootloader_extract");
+    std::fs::create_dir_all(&temp_dir)?;
+    
+    // Use the direct guestfish approach
+    extract_with_guestfish_direct(qcow2_path, &temp_dir)?;
+    
+    let gpt_path = temp_dir.join("gpt_data.bin");
+    let shim_path = temp_dir.join("shim_data.efi");
+    let grub_path = temp_dir.join("grub_data.efi");
+    
+    // Read the extracted files
+    let gpt_data = std::fs::read(&gpt_path)
+        .context("Failed to read extracted GPT data")?;
+    let shim_data = std::fs::read(&shim_path)
+        .context("Failed to read extracted shim data")?;
+    let grub_data = std::fs::read(&grub_path)
+        .context("Failed to read extracted grub data")?;
+    
+    // Cleanup temp files
+    let _ = std::fs::remove_dir_all(&temp_dir);
+    
+    Ok(BootloaderComponents {
+        gpt_data,
+        shim_data,
+        grub_data,
+    })
+}
+
+/// Alternative implementation using direct command execution
+fn extract_with_guestfish_direct(qcow2_path: &str, output_dir: &Path) -> Result<()> {
+    let gpt_path = output_dir.join("gpt_data.bin");
+    let shim_path = output_dir.join("shim_data.efi");
+    let grub_path = output_dir.join("grub_data.efi");
+    
+    // Extract GPT data
+    let output = Command::new("guestfish")
+        .args(&[
+            "--ro", "-a", qcow2_path,
+            "run", ":",
+            "pread-device", "/dev/sda", "17408", "0"
+        ])
+        .output()
+        .context("Failed to extract GPT data")?;
+    
+    if !output.status.success() {
+        bail!("Failed to extract GPT data: {}", String::from_utf8_lossy(&output.stderr));
+    }
+    
+    std::fs::write(&gpt_path, &output.stdout)?;
+    
+    // Extract shim
+    let output = Command::new("guestfish")
+        .args(&[
+            "--ro", "-a", qcow2_path, "-i",
+            "download", "/boot/efi/EFI/ubuntu/shimx64.efi", shim_path.to_str().unwrap()
+        ])
+        .output()
+        .context("Failed to extract shim")?;
+    
+    if !output.status.success() {
+        bail!("Failed to extract shim: {}", String::from_utf8_lossy(&output.stderr));
+    }
+    
+    // Extract grub
+    let output = Command::new("guestfish")
+        .args(&[
+            "--ro", "-a", qcow2_path, "-i",
+            "download", "/boot/efi/EFI/ubuntu/grubx64.efi", grub_path.to_str().unwrap()
+        ])
+        .output()
+        .context("Failed to extract grub")?;
+    
+    if !output.status.success() {
+        bail!("Failed to extract grub: {}", String::from_utf8_lossy(&output.stderr));
+    }
+    
+    Ok(())
+}
 
 /// Calculates the Authenticode hash of a PE/COFF file
 fn authenticode_sha384_hash(data: &[u8]) -> Result<Vec<u8>> {
@@ -111,6 +204,37 @@ fn authenticode_sha384_hash(data: &[u8]) -> Result<Vec<u8>> {
     Ok(hasher.finalize().to_vec())
 }
 
+/// Measures RTMR1 for bootloader-based deployments
+pub(crate) fn measure_bootloader_chain(
+    gpt_data: &[u8],
+    shim_data: &[u8], 
+    grub_data: &[u8],
+) -> Result<Vec<u8>> {
+    let gpt_hash = measure_sha384(gpt_data);
+    let shim_hash = authenticode_sha384_hash(shim_data).context("Failed to compute shim hash")?;
+    let grub_hash = authenticode_sha384_hash(grub_data).context("Failed to compute grub hash")?;
+    
+    let rtmr1_log = vec![
+        measure_sha384(b"Calling EFI Application from Boot Option"),
+        measure_sha384(&[0x00, 0x00, 0x00, 0x00]), // Separator
+        gpt_hash,
+        shim_hash,
+        grub_hash,
+        measure_sha384(b"Exit Boot Services Invocation"),
+        measure_sha384(b"Exit Boot Services Returned with Success"),
+    ];
+    debug_print_log("RTMR1", &rtmr1_log);
+    Ok(measure_log(&rtmr1_log))
+}
+
+/// Main function to measure RTMR1 from a qcow2 disk image
+pub fn measure_rtmr1_from_qcow2(qcow2_path: &str) -> Result<Vec<u8>> {
+    let components = extract_bootloader_components(qcow2_path)
+        .context("Failed to extract bootloader components")?;
+    
+    measure_bootloader_chain(&components.gpt_data, &components.shim_data, &components.grub_data)
+}
+
 /// Patches the kernel image as qemu does.
 fn patch_kernel(
     kernel_data: &[u8],
@@ -196,7 +320,7 @@ fn patch_kernel(
     Ok(kd)
 }
 
-/// Measures a QEMU-patched TDX kernel image.
+/// Measures a QEMU-patched TDX kernel image (for direct boot).
 pub(crate) fn measure_kernel(
     kernel_data: &[u8],
     initrd_size: u32,

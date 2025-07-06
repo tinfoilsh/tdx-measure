@@ -10,6 +10,7 @@ use log::debug;
 pub struct Machine<'a> {
     pub cpu_count: u8,
     pub memory_size: u64,
+    pub qcow2: &'a str,
     pub firmware: &'a str,
     pub kernel: &'a str,
     pub initrd: &'a str,
@@ -43,12 +44,14 @@ impl Machine<'_> {
         let tdvf = Tdvf::parse(&fw_data).context("Failed to parse TDVF metadata")?;
         let mrtd = tdvf.mrtd(self).context("Failed to compute MR TD")?;
         let rtmr0 = tdvf.rtmr0(self).context("Failed to compute RTMR0")?;
-        let rtmr1 = kernel::measure_kernel(
-            &kernel_data,
-            initrd_data.len() as u32,
-            self.memory_size,
-            0x28000,
-        )?;
+        // let rtmr1 = kernel::measure_kernel(
+        //     &kernel_data,
+        //     initrd_data.len() as u32,
+        //     self.memory_size,
+        //     0x28000,
+        // )?;
+
+        let rtmr1 = kernel::measure_rtmr1_from_qcow2(self.qcow2)?;
 
         let rtmr2_log = vec![
             kernel::measure_cmdline(self.kernel_cmdline),

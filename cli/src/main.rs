@@ -86,6 +86,7 @@ fn main() -> Result<()> {
             let parent_dir = config.metadata.parent().unwrap_or(".".as_ref());
             
             // Image paths
+            let qcow2_path = parent_dir.join(&image_info.qcow2).display().to_string();
             let firmware_path = parent_dir.join(&image_info.bios).display().to_string();
             let kernel_path = parent_dir.join(&image_info.kernel).display().to_string();
             let initrd_path = parent_dir.join(&image_info.initrd).display().to_string();
@@ -104,6 +105,7 @@ fn main() -> Result<()> {
             let machine = Machine::builder()
                 .cpu_count(config.cpu)
                 .memory_size(config.memory)
+                .qcow2(&qcow2_path)
                 .firmware(&firmware_path)
                 .kernel(&kernel_path)
                 .initrd(&initrd_path)

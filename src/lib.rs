@@ -28,6 +28,7 @@ pub struct TdxMeasurements {
 /// Image information for DStack images
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ImageInfo {
+    pub qcow2: String,
     pub cmdline: String,
     pub kernel: String,
     pub initrd: String,
