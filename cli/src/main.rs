@@ -71,6 +71,10 @@ struct MachineConfig {
     /// Output JSON
     #[arg(long)]
     json: bool,
+
+    /// Output JSON to file
+    #[arg(long)]
+    json_file: Option<PathBuf>,
 }
 
 fn main() -> Result<()> {
@@ -137,10 +141,15 @@ fn main() -> Result<()> {
                 println!("{}", serde_json::to_string_pretty(&measurements).unwrap());
             } else {
                 println!("Machine measurements:");
-                println!("MRTD: {}", hex::encode(measurements.mrtd));
-                println!("RTMR0: {}", hex::encode(measurements.rtmr0));
-                println!("RTMR1: {}", hex::encode(measurements.rtmr1));
-                println!("RTMR2: {}", hex::encode(measurements.rtmr2));
+                println!("MRTD: {}", hex::encode(&measurements.mrtd));
+                println!("RTMR0: {}", hex::encode(&measurements.rtmr0));
+                println!("RTMR1: {}", hex::encode(&measurements.rtmr1));
+                println!("RTMR2: {}", hex::encode(&measurements.rtmr2));
+            }
+
+            if let Some(ref json_file) = config.json_file {
+                fs::write(json_file, serde_json::to_string_pretty(&measurements).unwrap())
+                    .context("Failed to write measurements to file")?;
             }
         }
     }

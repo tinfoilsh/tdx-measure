@@ -45,27 +45,110 @@ pub fn extract_bootloader_components(qcow2_path: &str) -> Result<BootloaderCompo
     })
 }
 
-/// Alternative implementation using direct command execution
+/// Extracts GPT event data in the format used by EV_EFI_GPT_EVENT
+fn extract_gpt_event_data(qcow2_path: &str) -> Result<Vec<u8>> {
+    // Extract GPT header from LBA 1 (skip MBR at LBA 0)
+    let output = Command::new("guestfish")
+        .args(&[
+            "--ro", "-a", qcow2_path,
+            "run", ":",
+            "pread-device", "/dev/sda", "512", "512"  // Read LBA 1 (GPT header)
+        ])
+        .output()
+        .context("Failed to extract GPT header")?;
+    
+    if !output.status.success() {
+        bail!("Failed to extract GPT header: {}", String::from_utf8_lossy(&output.stderr));
+    }
+    
+    let gpt_header = output.stdout;
+    
+    // Parse GPT header
+    if gpt_header.len() < 92 {
+        bail!("GPT header too short");
+    }
+    
+    // Check GPT signature
+    if &gpt_header[0..8] != b"EFI PART" {
+        bail!("Invalid GPT signature");
+    }
+    
+    // Read partition entry info from GPT header
+    let partition_entry_lba = u64::from_le_bytes(gpt_header[72..80].try_into().unwrap());
+    let num_entries = u32::from_le_bytes(gpt_header[80..84].try_into().unwrap()) as usize;
+    let entry_size = u32::from_le_bytes(gpt_header[84..88].try_into().unwrap()) as usize;
+    
+    // Calculate how many sectors we need to read for all partition entries
+    let entries_size = num_entries * entry_size;
+    let sectors_needed = (entries_size + 511) / 512; // Round up to sector boundary
+    
+    // Extract partition entries
+    let entries_offset = partition_entry_lba * 512;
+    let entries_length = sectors_needed * 512;
+    
+    let output = Command::new("guestfish")
+        .args(&[
+            "--ro", "-a", qcow2_path,
+            "run", ":",
+            "pread-device", "/dev/sda", &entries_length.to_string(), &entries_offset.to_string()
+        ])
+        .output()
+        .context("Failed to extract GPT entries")?;
+    
+    if !output.status.success() {
+        bail!("Failed to extract GPT entries: {}", String::from_utf8_lossy(&output.stderr));
+    }
+    
+    let all_entries = output.stdout;
+    
+    // Filter valid partition entries (non-zero PartitionTypeGUID)
+    let mut valid_entries = Vec::new();
+    for i in 0..num_entries {
+        let entry_offset = i * entry_size;
+        if entry_offset + entry_size > all_entries.len() {
+            break;
+        }
+        
+        let entry = &all_entries[entry_offset..entry_offset + entry_size];
+        
+        // Check if PartitionTypeGUID is non-zero (first 16 bytes)
+        let is_valid = !entry[0..16].iter().all(|&b| b == 0);
+        
+        if is_valid {
+            valid_entries.push(entry.to_vec());
+        }
+    }
+    
+    // Build the EFI_GPT_DATA structure:
+    // 1. GPT Header (92 bytes)
+    // 2. NumberOfPartitions (8 bytes as UINT64)
+    // 3. Valid partition entries (128 bytes each)
+    let mut gpt_event_data = Vec::new();
+    
+    // Add GPT header (92 bytes)
+    gpt_event_data.extend_from_slice(&gpt_header[0..92]);
+    
+    // Add NumberOfPartitions as 64-bit value
+    let num_valid_partitions = valid_entries.len() as u64;
+    gpt_event_data.extend_from_slice(&num_valid_partitions.to_le_bytes());
+    
+    // Add valid partition entries
+    for entry in valid_entries {
+        gpt_event_data.extend_from_slice(&entry);
+    }
+    
+    Ok(gpt_event_data)
+}
+
+/// Direct implementation using guestfish commands
 fn extract_with_guestfish_direct(qcow2_path: &str, output_dir: &Path) -> Result<()> {
     let gpt_path = output_dir.join("gpt_data.bin");
     let shim_path = output_dir.join("shim_data.efi");
     let grub_path = output_dir.join("grub_data.efi");
     
-    // Extract GPT data
-    let output = Command::new("guestfish")
-        .args(&[
-            "--ro", "-a", qcow2_path,
-            "run", ":",
-            "pread-device", "/dev/sda", "17408", "0"
-        ])
-        .output()
-        .context("Failed to extract GPT data")?;
-    
-    if !output.status.success() {
-        bail!("Failed to extract GPT data: {}", String::from_utf8_lossy(&output.stderr));
-    }
-    
-    std::fs::write(&gpt_path, &output.stdout)?;
+    // Extract GPT event data (not raw sectors)
+    let gpt_data = extract_gpt_event_data(qcow2_path)?;
+    std::fs::write(&gpt_path, &gpt_data)?;
     
     // Extract shim
     let output = Command::new("guestfish")
