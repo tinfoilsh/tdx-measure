@@ -35,6 +35,6 @@ jobs:
       uses: softprops/action-gh-release@v1
       with:
         files: |
-          cli/target/release/dstack-mr
+          cli/target/release/tdx-measure
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 

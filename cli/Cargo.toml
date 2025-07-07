@@ -1,10 +1,10 @@
 [package]
-name = "dstack-mr-cli"
+name = "tdx-measure"
 version = "0.1.0"
 edition = "2021"
 
 [[bin]]
-name = "dstack-mr"
+name = "tdx-measure"
 path = "src/main.rs"
 
 [dependencies]

@@ -1,6 +1,6 @@
 use anyhow::{Context, Result, anyhow};
 use clap::{Parser, Subcommand};
-use dstack_mr::{Machine, ImageInfo, TdxMeasurements};
+use dstack_mr::{Machine, ImageInfo};
 use fs_err as fs;
 use std::path::PathBuf;
 
