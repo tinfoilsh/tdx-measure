@@ -16,21 +16,27 @@ mod util;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TdxMeasurements {
     #[serde(with = "hex_bytes")]
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub mrtd: Vec<u8>,
     #[serde(with = "hex_bytes")]
     pub rtmr0: Vec<u8>,
     #[serde(with = "hex_bytes")]
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub rtmr1: Vec<u8>,
     #[serde(with = "hex_bytes")]
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub rtmr2: Vec<u8>,
 }
 
 /// Image information for DStack images
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ImageInfo {
+    #[serde(default)]
     pub qcow2: String,
     pub cmdline: String,
+    #[serde(default)]
     pub kernel: String,
+    #[serde(default)]
     pub initrd: String,
     pub bios: String,
     pub acpi_tables: String,
