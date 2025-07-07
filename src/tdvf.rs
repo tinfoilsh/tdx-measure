@@ -294,6 +294,7 @@ impl<'a> Tdvf<'a> {
             measure_sha384(&boot0001_data.unwrap()),
             measure_sha384(&boot0000_data.unwrap()),
             measure_sha384(&boot0006_data.unwrap()),
+            measure_tdx_efi_variable("605DAB50-E046-4300-ABB6-3DD810DD8B23", "SbatLevel", Some(b"sbat,1,2021030218\n"))?, 
         ];
         debug_print_log("RTMR0", &rtmr0_log);
         Ok(measure_log(&rtmr0_log))
