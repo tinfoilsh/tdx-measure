@@ -39,7 +39,7 @@ impl Machine<'_> {
     pub fn measure(&self) -> Result<TdxMeasurements> {
         debug!("measuring machine: {self:#?}");
         let fw_data = fs::read(self.firmware)?;
-        let kernel_data = fs::read(self.kernel)?;
+        let _kernel_data = fs::read(self.kernel)?;
         let initrd_data = fs::read(self.initrd)?;
         let tdvf = Tdvf::parse(&fw_data).context("Failed to parse TDVF metadata")?;
         let mrtd = tdvf.mrtd(self).context("Failed to compute MR TD")?;

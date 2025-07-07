@@ -1,9 +1,9 @@
+#![allow(dead_code)] // todo: remove
+
 use crate::{measure_log, measure_sha384, num::read_le, utf16_encode, util::debug_print_log};
 use anyhow::{bail, Context, Result};
 use object::pe;
 use sha2::{Digest, Sha384};
-use std::fs::File;
-use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
 use std::process::Command;
 
