@@ -76,9 +76,9 @@ struct MachineConfig {
     #[arg(long)]
     json_file: Option<PathBuf>,
 
-    /// Print RTMR0 only
+    /// Compute MRTD and RTMR0 only
     #[arg(long)]
-    rtmr0_only: bool,
+    platform_only: bool,
 }
 
 fn main() -> Result<()> {
@@ -137,13 +137,8 @@ fn main() -> Result<()> {
                 .root_verity(config.root_verity)
                 .build();
 
-            let measurements = if config.rtmr0_only {
-                TdxMeasurements {
-                    mrtd: vec![],
-                    rtmr0: machine.measure_rtmr0()?,
-                    rtmr1: vec![],
-                    rtmr2: vec![],
-                }
+            let measurements = if config.platform_only {
+                machine.measure_platform().context("Failed to measure platform")?
             } else {
                 machine.measure().context("Failed to measure machine configuration")?
             };

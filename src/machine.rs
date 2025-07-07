@@ -68,9 +68,17 @@ impl Machine<'_> {
         })
     }
 
-    pub fn measure_rtmr0(&self) -> Result<Vec<u8>> {
+    pub fn measure_platform(&self) -> Result<TdxMeasurements> {
         let fw_data = fs::read(self.firmware)?;
         let tdvf = Tdvf::parse(&fw_data).context("Failed to parse TDVF metadata")?;
-        tdvf.rtmr0(self).context("Failed to compute RTMR0")
+        let mrtd = tdvf.mrtd(self).context("Failed to compute MR TD")?;
+        let rtmr0 = tdvf.rtmr0(self).context("Failed to compute RTMR0")?;
+
+        Ok(TdxMeasurements {
+            mrtd,
+            rtmr0,
+            rtmr1: vec![],
+            rtmr2: vec![],
+        })
     }
 }
