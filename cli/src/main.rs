@@ -68,6 +68,10 @@ struct MachineConfig {
     #[arg(long, default_value = "true")]
     root_verity: Bool,
 
+    /// Enable direct boot
+    #[arg(long, default_value = "true")]
+    direct_boot: Bool,
+
     /// Output JSON
     #[arg(long)]
     json: bool,
@@ -109,6 +113,10 @@ fn main() -> Result<()> {
             let boot_0001_path = parent_dir.join(&image_info.boot_0001).display().to_string();
             let boot_0006_path = parent_dir.join(&image_info.boot_0006).display().to_string();
             let boot_0007_path = parent_dir.join(&image_info.boot_0007).display().to_string();
+            let mok_list_path = parent_dir.join(&image_info.mok_list).display().to_string();
+            let mok_list_trusted_path = parent_dir.join(&image_info.mok_list_trusted).display().to_string();
+            let mok_list_x_path = parent_dir.join(&image_info.mok_list_x).display().to_string();
+            let sbat_level_path = parent_dir.join(&image_info.sbat_level).display().to_string();
 
             let machine = Machine::builder()
                 .cpu_count(config.cpu)
@@ -126,6 +134,10 @@ fn main() -> Result<()> {
                 .boot_0001(&boot_0001_path)
                 .boot_0006(&boot_0006_path)
                 .boot_0007(&boot_0007_path)
+                .mok_list(&mok_list_path)
+                .mok_list_trusted(&mok_list_trusted_path)
+                .mok_list_x(&mok_list_x_path)
+                .sbat_level(&sbat_level_path)
                 .two_pass_add_pages(config.two_pass_add_pages)
                 .pic(config.pic)
                 .smm(config.smm)
@@ -135,6 +147,7 @@ fn main() -> Result<()> {
                 .num_nvswitches(config.num_nvswitches)
                 .hotplug_off(config.hotplug_off)
                 .root_verity(config.root_verity)
+                .direct_boot(config.direct_boot)
                 .build();
 
             let measurements = if config.platform_only {

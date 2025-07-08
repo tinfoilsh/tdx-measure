@@ -32,6 +32,34 @@ def extract_boot_variable(var_name, output_file):
         print(f"Error extracting {var_name}: {e}")
         return False
 
+def extract_mok_variable(var_name, output_file):
+    """Extract MOK variable from /sys/firmware/efi/mok-variables/"""
+    mok_var_path = f"/sys/firmware/efi/mok-variables/{var_name}"
+
+    if not os.path.exists(mok_var_path):
+        print(f"Error: {var_name} MOK variable not found at {mok_var_path}")
+        return False
+
+    try:
+        with open(mok_var_path, 'rb') as f:
+            variable_data = f.read()
+
+        with open(output_file, 'wb') as f:
+            f.write(variable_data)
+
+        print(f"Extracted {var_name} MOK variable data: {len(variable_data)} bytes -> {output_file}")
+
+        if len(variable_data) > 0:
+            # Show first 16 bytes
+            hex_preview = ' '.join(f'{b:02x}' for b in variable_data[:16])
+            print(f"First 16 bytes: {hex_preview}")
+
+        return True
+
+    except Exception as e:
+        print(f"Error extracting {var_name}: {e}")
+        return False
+
 def extract_acpi_data(source_path, output_file, description):
     """Extract ACPI data from QEMU fw_cfg interface"""
     if not os.path.exists(source_path):
@@ -71,6 +99,15 @@ def main():
         output_file = f"{var_name}.bin"
         extract_boot_variable(var_name, output_file)
 
+    print("\nExtracting MOK variables...")
+
+    # MOK variable extractions
+    mok_variables = ["MokListRT", "MokListTrustedRT", "MokListXRT", "SbatLevelRT"]
+
+    for var_name in mok_variables:
+        output_file = f"{var_name}.bin"
+        extract_mok_variable(var_name, output_file)
+
     print("\nExtracting ACPI data...")
 
     # ACPI data extractions
@@ -88,6 +125,13 @@ def main():
     
     # Show EFI variable files
     for var_name in variables:
+        output_file = f"{var_name}.bin"
+        if os.path.exists(output_file):
+            size = os.path.getsize(output_file)
+            print(f"  {output_file}: {size} bytes")
+    
+    # Show MOK variable files
+    for var_name in mok_variables:
         output_file = f"{var_name}.bin"
         if os.path.exists(output_file):
             size = os.path.getsize(output_file)

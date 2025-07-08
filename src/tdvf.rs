@@ -87,7 +87,7 @@ fn measure_tdx_efi_variable(vendor_guid: &str, var_name: &str, var_data: Option<
 }
 
 // Add this helper function to read boot variable data
-fn read_boot_variable_data(filename: &str) -> Result<Option<Vec<u8>>> {
+fn read_file_data(filename: &str) -> Result<Option<Vec<u8>>> {
     let path = Path::new(filename);
     if path.exists() {
         match fs::read(path) {
@@ -265,19 +265,19 @@ impl<'a> Tdvf<'a> {
         let cfv_image_hash = hex!("344BC51C980BA621AAA00DA3ED7436F7D6E549197DFE699515DFA2C6583D95E6412AF21C097D473155875FFD561D6790");
         
         // Load boot variable data from files
-        let boot_order_data = read_boot_variable_data(machine.boot_order)?;
-        let boot0007_data = read_boot_variable_data(machine.boot_0007)?;
-        let boot0001_data = read_boot_variable_data(machine.boot_0001)?;
-        let boot0000_data = read_boot_variable_data(machine.boot_0000)?;
-        let boot0006_data = read_boot_variable_data(machine.boot_0006)?;
-        
+        let boot_order_data = read_file_data(machine.boot_order)?;
+        let boot0007_data = read_file_data(machine.boot_0007)?;
+        let boot0001_data = read_file_data(machine.boot_0001)?;
+        let boot0000_data = read_file_data(machine.boot_0000)?;
+        let boot0006_data = read_file_data(machine.boot_0006)?;
+
         let tables = machine.build_tables()?;
         let acpi_tables_hash = measure_sha384(&tables.tables);
         let acpi_rsdp_hash = measure_sha384(&tables.rsdp);
         let acpi_loader_hash = measure_sha384(&tables.loader);
 
         // RTMR0 calculation
-        let rtmr0_log = vec![
+        let mut rtmr0_log = vec![
             td_hob_hash,
             cfv_image_hash.to_vec(),
             measure_tdx_efi_variable("8BE4DF61-93CA-11D2-AA0D-00E098032B8C", "SecureBoot", None)?,
@@ -294,8 +294,12 @@ impl<'a> Tdvf<'a> {
             measure_sha384(&boot0001_data.unwrap()),
             measure_sha384(&boot0000_data.unwrap()),
             measure_sha384(&boot0006_data.unwrap()),
-            measure_tdx_efi_variable("605DAB50-E046-4300-ABB6-3DD810DD8B23", "SbatLevel", Some(b"sbat,1,2021030218\n"))?, 
         ];
+
+        if !machine.direct_boot {
+            rtmr0_log.push(measure_tdx_efi_variable("605DAB50-E046-4300-ABB6-3DD810DD8B23", "SbatLevel", Some(b"sbat,1,2021030218\n"))?);
+        }
+
         debug_print_log("RTMR0", &rtmr0_log);
         Ok(measure_log(&rtmr0_log))
     }

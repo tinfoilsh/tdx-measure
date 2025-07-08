@@ -238,6 +238,7 @@ impl Machine<'_> {
                         mcfg_offset: u32, mcfg_csum: u32, mcfg_len: u32,
                         waet_offset: u32, waet_csum: u32, waet_len: u32,
                         rsdt_info: Option<(u32, u32, u32)>) -> Result<Vec<u8>> {
+        
         let generated_loader = self.generate_table_loader(
             dsdt_offset, dsdt_csum, dsdt_len,
             facp_offset, facp_csum, facp_len,
@@ -275,10 +276,8 @@ impl Machine<'_> {
                     }
                     
                     // Show hex dumps for comparison (first 128 bytes to avoid too much output)
-                    let file_sample = &file_loader[..file_loader.len().min(128)];
-                    let gen_sample = &generated_loader[..generated_loader.len().min(128)];
-                    debug!("File table loader hex dump (first 128 bytes): {:02x?}", file_sample);
-                    debug!("Generated table loader hex dump (first 128 bytes): {:02x?}", gen_sample);
+                    println!("File table loader as characters: \n{}\n", String::from_utf8_lossy(&file_loader));
+                    println!("Generated table loader as characters: \n{}\n", String::from_utf8_lossy(&generated_loader));
                 }
                 
                 Ok(file_loader)
@@ -561,7 +560,7 @@ fn find_acpi_table(tables: &[u8], signature: &str) -> Result<(u32, u32, u32)> {
 
         if tbl_len == 0 {
             // Invalid table length, stop searching
-            bail!("Found table with zero length at offset {offset}");
+            bail!("Found table with zero length at offset {offset} for table {signature}");
         }
         // Move to the next table
         offset += tbl_len;

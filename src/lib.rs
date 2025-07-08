@@ -7,6 +7,7 @@ use util::{measure_log, measure_sha384, utf16_encode};
 
 mod acpi;
 mod kernel;
+mod image;
 mod machine;
 mod num;
 mod tdvf;
@@ -47,4 +48,8 @@ pub struct ImageInfo {
     pub boot_0001: String,
     pub boot_0006: String,
     pub boot_0007: String,
+    pub mok_list: String,
+    pub mok_list_trusted: String,
+    pub mok_list_x: String,
+    pub sbat_level: String,
 }
