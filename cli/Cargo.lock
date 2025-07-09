@@ -228,24 +228,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "dstack-mr"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "bon",
- "fs-err",
- "hex",
- "hex-literal",
- "log",
- "object",
- "serde",
- "serde-human-bytes",
- "serde_json",
- "sha2",
- "thiserror",
-]
-
-[[package]]
 name = "flate2"
 version = "1.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -523,11 +505,29 @@ name = "tdx-measure"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "bon",
+ "fs-err",
+ "hex",
+ "hex-literal",
+ "log",
+ "object",
+ "serde",
+ "serde-human-bytes",
+ "serde_json",
+ "sha2",
+ "thiserror",
+]
+
+[[package]]
+name = "tdx-measure-cli"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
  "clap",
- "dstack-mr",
  "fs-err",
  "hex",
  "serde_json",
+ "tdx-measure",
  "tracing-subscriber",
 ]
 

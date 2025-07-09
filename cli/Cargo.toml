@@ -1,5 +1,5 @@
 [package]
-name = "tdx-measure"
+name = "tdx-measure-cli"
 version = "0.1.0"
 edition = "2021"
 
@@ -9,7 +9,7 @@ path = "src/main.rs"
 
 [dependencies]
 clap = { version = "4.0", features = ["derive"] }
-dstack-mr = { path = ".." }
+tdx-measure = { path = ".." }
 anyhow = "1.0"
 hex = "0.4"
 fs-err = "2.11"

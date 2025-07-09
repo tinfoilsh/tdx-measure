@@ -1,6 +1,6 @@
 use anyhow::{Context, Result, anyhow};
 use clap::{Parser, Subcommand};
-use dstack_mr::{Machine, ImageConfig};
+use tdx_measure::{Machine, ImageConfig};
 use fs_err as fs;
 use std::path::{Path, PathBuf};
 
@@ -167,7 +167,7 @@ fn process_measurements(config: &MachineConfig, image_config: &ImageConfig) -> R
     Ok(())
 }
 
-fn output_measurements(config: &MachineConfig, measurements: &dstack_mr::TdxMeasurements) -> Result<()> {
+fn output_measurements(config: &MachineConfig, measurements: &tdx_measure::TdxMeasurements) -> Result<()> {
     let json_output = serde_json::to_string_pretty(measurements).unwrap();
     
     if config.json {
