@@ -1,5 +1,5 @@
 use anyhow::{Context, Result, anyhow};
-use clap::{Parser, Subcommand};
+use clap::Parser;
 use tdx_measure::{Machine, ImageConfig};
 use fs_err as fs;
 use std::path::{Path, PathBuf};
@@ -7,20 +7,6 @@ use std::path::{Path, PathBuf};
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
 struct Cli {
-    #[command(subcommand)]
-    command: Commands,
-}
-
-#[derive(Subcommand)]
-enum Commands {
-    /// Measure a machine configuration
-    Measure(MachineConfig),
-}
-
-type Bool = bool;
-
-#[derive(Parser)]
-struct MachineConfig {
     /// Number of CPUs
     #[arg(short, long, default_value = "1")]
     cpu: u8,
@@ -34,11 +20,11 @@ struct MachineConfig {
 
     /// Enable two-pass add pages
     #[arg(long, default_value = "true")]
-    two_pass_add_pages: Bool,
+    two_pass_add_pages: bool,
 
     /// Enable direct boot (overrides JSON configuration)
     #[arg(long)]
-    direct_boot: Option<Bool>,
+    direct_boot: Option<bool>,
 
     /// Output JSON
     #[arg(long)]
@@ -108,7 +94,7 @@ impl PathResolver {
         Ok(Self { paths })
     }
     
-    fn build_machine(&self, config: &MachineConfig, direct_boot: bool) -> Machine {
+    fn build_machine(&self, config: &Cli, direct_boot: bool) -> Machine {
         Machine::builder()
             .cpu_count(config.cpu)
             .memory_size(config.memory)
@@ -135,7 +121,7 @@ impl PathResolver {
     }
 }
 
-fn process_measurements(config: &MachineConfig, image_config: &ImageConfig) -> Result<()> {
+fn process_measurements(config: &Cli, image_config: &ImageConfig) -> Result<()> {
     // Validate the configuration
     image_config.validate()
         .map_err(|e| anyhow!("Invalid image configuration: {}", e))?;
@@ -167,7 +153,7 @@ fn process_measurements(config: &MachineConfig, image_config: &ImageConfig) -> R
     Ok(())
 }
 
-fn output_measurements(config: &MachineConfig, measurements: &tdx_measure::TdxMeasurements) -> Result<()> {
+fn output_measurements(config: &Cli, measurements: &tdx_measure::TdxMeasurements) -> Result<()> {
     let json_output = serde_json::to_string_pretty(measurements).unwrap();
     
     if config.json {
@@ -192,16 +178,12 @@ fn main() -> Result<()> {
     tracing_subscriber::fmt::init();
 
     let cli = Cli::parse();
-    match &cli.command {
-        Commands::Measure(config) => {
-            let metadata = fs::read_to_string(&config.metadata)
-                .context("Failed to read image metadata")?;
-            let image_config: ImageConfig = serde_json::from_str(&metadata)
-                .context("Failed to parse image metadata")?;
-            
-            process_measurements(config, &image_config)?;
-        }
-    }
+    let metadata = fs::read_to_string(&cli.metadata)
+        .context("Failed to read image metadata")?;
+    let image_config: ImageConfig = serde_json::from_str(&metadata)
+        .context("Failed to parse image metadata")?;
+    
+    process_measurements(&cli, &image_config)?;
 
     Ok(())
 }
