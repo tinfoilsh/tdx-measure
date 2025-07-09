@@ -3,7 +3,7 @@ use serde_human_bytes as hex_bytes;
 
 pub use machine::Machine;
 
-use util::{measure_log, measure_sha384, utf16_encode};
+use util::{measure_log, measure_sha384};
 
 mod acpi;
 mod kernel;

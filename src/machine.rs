@@ -28,17 +28,8 @@ pub struct Machine<'a> {
     pub mok_list_trusted: Option<&'a str>,
     pub mok_list_x: Option<&'a str>,
     pub sbat_level: Option<&'a str>,
-    pub two_pass_add_pages: bool,
-    pub pic: bool,
-    #[builder(default = false)]
-    pub smm: bool,
-    pub pci_hole64_size: Option<u64>,
-    pub hugepages: bool,
-    pub num_gpus: u32,
-    pub num_nvswitches: u32,
-    pub hotplug_off: bool,
-    pub root_verity: bool,
     pub direct_boot: bool,
+    pub two_pass_add_pages: bool,
 }
 
 impl Machine<'_> {

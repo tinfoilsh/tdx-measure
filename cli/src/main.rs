@@ -36,38 +36,6 @@ struct MachineConfig {
     #[arg(long, default_value = "true")]
     two_pass_add_pages: Bool,
 
-    /// Enable PIC
-    #[arg(long, default_value = "true")]
-    pic: Bool,
-
-    /// Enable SMM
-    #[arg(long, default_value = "false")]
-    smm: Bool,
-
-    /// PCI hole64 size (accepts decimal or hex with 0x prefix)
-    #[arg(long, value_parser = parse_memory_size)]
-    pci_hole64_size: Option<u64>,
-
-    /// Enable hugepages
-    #[arg(long, default_value = "false")]
-    hugepages: bool,
-
-    /// Number of GPUs
-    #[arg(long, default_value = "0")]
-    num_gpus: u32,
-
-    /// Number of NVSwitches
-    #[arg(long, default_value = "0")]
-    num_nvswitches: u32,
-
-    /// Disable hotplug
-    #[arg(long, default_value = "false")]
-    hotplug_off: Bool,
-
-    /// Enable root verity
-    #[arg(long, default_value = "true")]
-    root_verity: Bool,
-
     /// Enable direct boot (overrides JSON configuration)
     #[arg(long)]
     direct_boot: Option<Bool>,
@@ -162,14 +130,6 @@ impl PathResolver {
             .mok_list_x(self.paths.mok_list_x.as_deref().unwrap_or(""))
             .sbat_level(self.paths.sbat_level.as_deref().unwrap_or(""))
             .two_pass_add_pages(config.two_pass_add_pages)
-            .pic(config.pic)
-            .smm(config.smm)
-            .maybe_pci_hole64_size(config.pci_hole64_size)
-            .hugepages(config.hugepages)
-            .num_gpus(config.num_gpus)
-            .num_nvswitches(config.num_nvswitches)
-            .hotplug_off(config.hotplug_off)
-            .root_verity(config.root_verity)
             .direct_boot(direct_boot)
             .build()
     }

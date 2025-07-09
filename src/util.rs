@@ -4,7 +4,6 @@ use crate::{num::read_le};
 use anyhow::{bail, Result};
 use object::pe;
 use std::fs;
-use std::path::Path;
 
 /// Computes a SHA384 hash of the given data.
 pub(crate) fn measure_sha384(data: &[u8]) -> Vec<u8> {
