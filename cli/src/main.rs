@@ -73,7 +73,7 @@ impl PathResolver {
         
         let paths = PathStorage {
             firmware: parent_dir.join(&boot_info.bios).display().to_string(),
-            cmdline: format!("{} initrd=initrd", image_config.cmdline()),
+            cmdline: image_config.cmdline().to_string(),
             acpi_tables: parent_dir.join(&boot_info.acpi_tables).display().to_string(),
             rsdp: parent_dir.join(&boot_info.rsdp).display().to_string(),
             table_loader: parent_dir.join(&boot_info.table_loader).display().to_string(),
