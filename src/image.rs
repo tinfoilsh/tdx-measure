@@ -377,7 +377,7 @@ fn read_file_data(filename: &str) -> Result<Vec<u8>> {
 }
 
 /// Measures RTMR2 using actual MOK variable data extracted from shim
-pub fn measure_rtmr2_from_qcow2(_qcow2_path: &str, cmdline: &str, initrd_data: &[u8], ref_mok_list: &str, ref_mok_list_trusted: &str, ref_mok_list_x: &str) -> Result<Vec<u8>> {
+pub fn measure_rtmr2_from_qcow2(_qcow2_path: &str, cmdline: &str, ref_mok_list: &str, ref_mok_list_trusted: &str, ref_mok_list_x: &str) -> Result<Vec<u8>> {
     
     // TODO: extract MOK variables from qcow2
     // let components = extract_bootloader_components(qcow2_path)
@@ -390,12 +390,14 @@ pub fn measure_rtmr2_from_qcow2(_qcow2_path: &str, cmdline: &str, initrd_data: &
     let ref_mok_list_trusted_data = read_file_data(ref_mok_list_trusted)?;
     let ref_mok_list_x_data = read_file_data(ref_mok_list_x)?;
 
+    // TODO: extract initrd from qcow2
+
     let rtmr2_log = vec![
         measure_sha384(&ref_mok_list_data),
         measure_sha384(&ref_mok_list_x_data),
         measure_sha384(&ref_mok_list_trusted_data),
         measure_cmdline(cmdline),
-        measure_sha384(initrd_data),
+        // measure_sha384(initrd_data),
     ];
 
     debug_print_log("RTMR2", &rtmr2_log);

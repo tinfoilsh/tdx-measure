@@ -1,4 +1,4 @@
-use crate::{measure_log, measure_sha384, utf16_encode, util::debug_print_log, util::authenticode_sha384_hash};
+use crate::{measure_log, measure_sha384, util::debug_print_log, util::authenticode_sha384_hash};
 use anyhow::{bail, Context, Result};
 
 /// Patches the kernel image as qemu does.

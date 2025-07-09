@@ -57,7 +57,7 @@ impl Machine<'_> {
             "-bios",
             self.firmware,
             "-kernel",
-            self.kernel,
+            self.kernel.unwrap_or(""),
             "-initrd",
             dummy_disk,
             "-drive",

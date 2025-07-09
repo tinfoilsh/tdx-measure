@@ -1,6 +1,6 @@
 use anyhow::{Context, Result, anyhow};
 use clap::{Parser, Subcommand};
-use dstack_mr::{Machine, ImageInfo};
+use dstack_mr::{Machine, ImageConfig};
 use fs_err as fs;
 use std::path::PathBuf;
 
@@ -68,9 +68,9 @@ struct MachineConfig {
     #[arg(long, default_value = "true")]
     root_verity: Bool,
 
-    /// Enable direct boot
-    #[arg(long, default_value = "true")]
-    direct_boot: Bool,
+    /// Enable direct boot (overrides JSON configuration)
+    #[arg(long)]
+    direct_boot: Option<Bool>,
 
     /// Output JSON
     #[arg(long)]
@@ -85,6 +85,98 @@ struct MachineConfig {
     platform_only: bool,
 }
 
+fn build_machine_for_direct_boot<'a>(
+    config: &'a MachineConfig,
+    firmware_path: &'a str,
+    cmdline: &'a str,
+    acpi_tables_path: &'a str,
+    rsdp_path: &'a str,
+    table_loader_path: &'a str,
+    boot_order_path: &'a str,
+    boot_0000_path: &'a str,
+    boot_0001_path: &'a str,
+    boot_0006_path: &'a str,
+    boot_0007_path: &'a str,
+    kernel_path: &'a str,
+    initrd_path: &'a str,
+) -> Machine<'a> {
+    Machine::builder()
+        .cpu_count(config.cpu)
+        .memory_size(config.memory)
+        .firmware(firmware_path)
+        .kernel(kernel_path)
+        .initrd(initrd_path)
+        .kernel_cmdline(cmdline)
+        .acpi_tables(acpi_tables_path)
+        .rsdp(rsdp_path)
+        .table_loader(table_loader_path)
+        .boot_order(boot_order_path)
+        .boot_0000(boot_0000_path)
+        .boot_0001(boot_0001_path)
+        .boot_0006(boot_0006_path)
+        .boot_0007(boot_0007_path)
+        .two_pass_add_pages(config.two_pass_add_pages)
+        .pic(config.pic)
+        .smm(config.smm)
+        .maybe_pci_hole64_size(config.pci_hole64_size)
+        .hugepages(config.hugepages)
+        .num_gpus(config.num_gpus)
+        .num_nvswitches(config.num_nvswitches)
+        .hotplug_off(config.hotplug_off)
+        .root_verity(config.root_verity)
+        .direct_boot(true)
+        .build()
+}
+
+fn build_machine_for_indirect_boot<'a>(
+    config: &'a MachineConfig,
+    firmware_path: &'a str,
+    cmdline: &'a str,
+    acpi_tables_path: &'a str,
+    rsdp_path: &'a str,
+    table_loader_path: &'a str,
+    boot_order_path: &'a str,
+    boot_0000_path: &'a str,
+    boot_0001_path: &'a str,
+    boot_0006_path: &'a str,
+    boot_0007_path: &'a str,
+    qcow2_path: &'a str,
+    mok_list_path: &'a str,
+    mok_list_trusted_path: &'a str,
+    mok_list_x_path: &'a str,
+    sbat_level_path: &'a str,
+) -> Machine<'a> {
+    Machine::builder()
+        .cpu_count(config.cpu)
+        .memory_size(config.memory)
+        .firmware(firmware_path)
+        .qcow2(qcow2_path)
+        .kernel_cmdline(cmdline)
+        .acpi_tables(acpi_tables_path)
+        .rsdp(rsdp_path)
+        .table_loader(table_loader_path)
+        .boot_order(boot_order_path)
+        .boot_0000(boot_0000_path)
+        .boot_0001(boot_0001_path)
+        .boot_0006(boot_0006_path)
+        .boot_0007(boot_0007_path)
+        .mok_list(mok_list_path)
+        .mok_list_trusted(mok_list_trusted_path)
+        .mok_list_x(mok_list_x_path)
+        .sbat_level(sbat_level_path)
+        .two_pass_add_pages(config.two_pass_add_pages)
+        .pic(config.pic)
+        .smm(config.smm)
+        .maybe_pci_hole64_size(config.pci_hole64_size)
+        .hugepages(config.hugepages)
+        .num_gpus(config.num_gpus)
+        .num_nvswitches(config.num_nvswitches)
+        .hotplug_off(config.hotplug_off)
+        .root_verity(config.root_verity)
+        .direct_boot(false)
+        .build()
+}
+
 fn main() -> Result<()> {
     tracing_subscriber::fmt::init();
 
@@ -93,62 +185,139 @@ fn main() -> Result<()> {
         Commands::Measure(config) => {
             let metadata =
                 fs::read_to_string(&config.metadata).context("Failed to read image metadata")?;
-            let image_info: ImageInfo =
+            let image_config: ImageConfig =
                 serde_json::from_str(&metadata).context("Failed to parse image metadata")?;
-            let parent_dir = config.metadata.parent().unwrap_or(".".as_ref());
             
-            // Image paths
-            let qcow2_path = parent_dir.join(&image_info.qcow2).display().to_string();
-            let firmware_path = parent_dir.join(&image_info.bios).display().to_string();
-            let kernel_path = parent_dir.join(&image_info.kernel).display().to_string();
-            let initrd_path = parent_dir.join(&image_info.initrd).display().to_string();
-            let cmdline = image_info.cmdline + " initrd=initrd";
-            
-            // Machine paths
-            let acpi_tables_path = parent_dir.join(&image_info.acpi_tables).display().to_string();
-            let rsdp_path = parent_dir.join(&image_info.rsdp).display().to_string();
-            let table_loader_path = parent_dir.join(&image_info.table_loader).display().to_string();
-            let boot_order_path = parent_dir.join(&image_info.boot_order).display().to_string();
-            let boot_0000_path = parent_dir.join(&image_info.boot_0000).display().to_string();
-            let boot_0001_path = parent_dir.join(&image_info.boot_0001).display().to_string();
-            let boot_0006_path = parent_dir.join(&image_info.boot_0006).display().to_string();
-            let boot_0007_path = parent_dir.join(&image_info.boot_0007).display().to_string();
-            let mok_list_path = parent_dir.join(&image_info.mok_list).display().to_string();
-            let mok_list_trusted_path = parent_dir.join(&image_info.mok_list_trusted).display().to_string();
-            let mok_list_x_path = parent_dir.join(&image_info.mok_list_x).display().to_string();
-            let sbat_level_path = parent_dir.join(&image_info.sbat_level).display().to_string();
+            // Validate the configuration
+            image_config.validate()
+                .map_err(|e| anyhow!("Invalid image configuration: {}", e))?;
 
-            let machine = Machine::builder()
-                .cpu_count(config.cpu)
-                .memory_size(config.memory)
-                .qcow2(&qcow2_path)
-                .firmware(&firmware_path)
-                .kernel(&kernel_path)
-                .initrd(&initrd_path)
-                .kernel_cmdline(&cmdline)
-                .acpi_tables(&acpi_tables_path)
-                .rsdp(&rsdp_path)
-                .table_loader(&table_loader_path)
-                .boot_order(&boot_order_path)
-                .boot_0000(&boot_0000_path)
-                .boot_0001(&boot_0001_path)
-                .boot_0006(&boot_0006_path)
-                .boot_0007(&boot_0007_path)
-                .mok_list(&mok_list_path)
-                .mok_list_trusted(&mok_list_trusted_path)
-                .mok_list_x(&mok_list_x_path)
-                .sbat_level(&sbat_level_path)
-                .two_pass_add_pages(config.two_pass_add_pages)
-                .pic(config.pic)
-                .smm(config.smm)
-                .maybe_pci_hole64_size(config.pci_hole64_size)
-                .hugepages(config.hugepages)
-                .num_gpus(config.num_gpus)
-                .num_nvswitches(config.num_nvswitches)
-                .hotplug_off(config.hotplug_off)
-                .root_verity(config.root_verity)
-                .direct_boot(config.direct_boot)
-                .build();
+            // Determine boot mode: CLI flag overrides JSON configuration
+            let direct_boot = config.direct_boot.unwrap_or(image_config.is_direct_boot());
+
+            let parent_dir = config.metadata.parent().unwrap_or(".".as_ref());
+            let boot_info = &image_config.boot_info;
+            
+            // Pre-allocate all strings to ensure they live long enough
+            let firmware_path = parent_dir.join(&boot_info.bios).display().to_string();
+            let cmdline = format!("{} initrd=initrd", image_config.cmdline());
+            let acpi_tables_path = parent_dir.join(&boot_info.acpi_tables).display().to_string();
+            let rsdp_path = parent_dir.join(&boot_info.rsdp).display().to_string();
+            let table_loader_path = parent_dir.join(&boot_info.table_loader).display().to_string();
+            let boot_order_path = parent_dir.join(&boot_info.boot_order).display().to_string();
+            let boot_0000_path = parent_dir.join(&boot_info.boot_0000).display().to_string();
+            let boot_0001_path = parent_dir.join(&boot_info.boot_0001).display().to_string();
+            let boot_0006_path = parent_dir.join(&boot_info.boot_0006).display().to_string();
+            let boot_0007_path = parent_dir.join(&boot_info.boot_0007).display().to_string();
+            
+            // Pre-allocate boot-mode specific strings
+            let kernel_path = if direct_boot {
+                if let Some(direct) = image_config.direct_boot() {
+                    parent_dir.join(&direct.kernel).display().to_string()
+                } else {
+                    return Err(anyhow!("Direct boot mode specified but no direct boot configuration found in JSON"));
+                }
+            } else {
+                String::new() // Not used in indirect boot
+            };
+            
+            let initrd_path = if direct_boot {
+                if let Some(direct) = image_config.direct_boot() {
+                    parent_dir.join(&direct.initrd).display().to_string()
+                } else {
+                    return Err(anyhow!("Direct boot mode specified but no direct boot configuration found in JSON"));
+                }
+            } else {
+                String::new() // Not used in indirect boot
+            };
+            
+            let qcow2_path = if !direct_boot {
+                if let Some(indirect) = image_config.indirect_boot() {
+                    parent_dir.join(&indirect.qcow2).display().to_string()
+                } else {
+                    return Err(anyhow!("Indirect boot mode specified but no indirect boot configuration found in JSON"));
+                }
+            } else {
+                String::new() // Not used in direct boot
+            };
+            
+            let mok_list_path = if !direct_boot {
+                if let Some(indirect) = image_config.indirect_boot() {
+                    parent_dir.join(&indirect.mok_list).display().to_string()
+                } else {
+                    return Err(anyhow!("Indirect boot mode specified but no indirect boot configuration found in JSON"));
+                }
+            } else {
+                String::new() // Not used in direct boot
+            };
+            
+            let mok_list_trusted_path = if !direct_boot {
+                if let Some(indirect) = image_config.indirect_boot() {
+                    parent_dir.join(&indirect.mok_list_trusted).display().to_string()
+                } else {
+                    return Err(anyhow!("Indirect boot mode specified but no indirect boot configuration found in JSON"));
+                }
+            } else {
+                String::new() // Not used in direct boot
+            };
+            
+            let mok_list_x_path = if !direct_boot {
+                if let Some(indirect) = image_config.indirect_boot() {
+                    parent_dir.join(&indirect.mok_list_x).display().to_string()
+                } else {
+                    return Err(anyhow!("Indirect boot mode specified but no indirect boot configuration found in JSON"));
+                }
+            } else {
+                String::new() // Not used in direct boot
+            };
+            
+            let sbat_level_path = if !direct_boot {
+                if let Some(indirect) = image_config.indirect_boot() {
+                    parent_dir.join(&indirect.sbat_level).display().to_string()
+                } else {
+                    return Err(anyhow!("Indirect boot mode specified but no indirect boot configuration found in JSON"));
+                }
+            } else {
+                String::new() // Not used in direct boot
+            };
+
+            // Build machine based on boot mode
+            let machine = if direct_boot {
+                build_machine_for_direct_boot(
+                    config,
+                    &firmware_path,
+                    &cmdline,
+                    &acpi_tables_path,
+                    &rsdp_path,
+                    &table_loader_path,
+                    &boot_order_path,
+                    &boot_0000_path,
+                    &boot_0001_path,
+                    &boot_0006_path,
+                    &boot_0007_path,
+                    &kernel_path,
+                    &initrd_path,
+                )
+            } else {
+                build_machine_for_indirect_boot(
+                    config,
+                    &firmware_path,
+                    &cmdline,
+                    &acpi_tables_path,
+                    &rsdp_path,
+                    &table_loader_path,
+                    &boot_order_path,
+                    &boot_0000_path,
+                    &boot_0001_path,
+                    &boot_0006_path,
+                    &boot_0007_path,
+                    &qcow2_path,
+                    &mok_list_path,
+                    &mok_list_trusted_path,
+                    &mok_list_x_path,
+                    &sbat_level_path,
+                )
+            };
 
             let measurements = if config.platform_only {
                 machine.measure_platform().context("Failed to measure platform")?
