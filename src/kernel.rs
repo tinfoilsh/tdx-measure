@@ -1,5 +1,6 @@
 use crate::{measure_log, measure_sha384, util::debug_print_log, util::authenticode_sha384_hash};
 use anyhow::{bail, Context, Result};
+use fs_err as fs;
 
 /// Patches the kernel image as qemu does.
 fn patch_kernel(
@@ -86,16 +87,25 @@ fn patch_kernel(
     Ok(kd)
 }
 
-/// Measures a QEMU-patched TDX kernel image (for direct boot).
-pub(crate) fn measure_kernel(
-    kernel_data: &[u8],
-    initrd_size: u32,
+/// Measures a QEMU-patched TDX kernel image from file paths (for direct boot).
+pub(crate) fn measure_rtm1_direct(
+    kernel_path: &str,
+    initrd_path: &str,
     mem_size: u64,
     acpi_data_size: u32,
 ) -> Result<Vec<u8>> {
-    let kd = patch_kernel(kernel_data, initrd_size, mem_size, acpi_data_size)
+
+    // Read kernel and initrd files
+    let kernel_data = fs::read(kernel_path).context("Failed to read kernel file")?;
+    let initrd_data = fs::read(initrd_path).context("Failed to read initrd file")?;
+    let initrd_size = initrd_data.len() as u32;
+    
+    // Patch kernel to mimic QEMU's behavior
+    let kd = patch_kernel(&kernel_data, initrd_size, mem_size, acpi_data_size)
         .context("Failed to patch kernel")?;
     let kernel_hash = authenticode_sha384_hash(&kd).context("Failed to compute kernel hash")?;
+
+    // Compute RTMR1 log
     let rtmr1_log = vec![
         kernel_hash,
         measure_sha384(b"Calling EFI Application from Boot Option"),
@@ -103,6 +113,29 @@ pub(crate) fn measure_kernel(
         measure_sha384(b"Exit Boot Services Invocation"),
         measure_sha384(b"Exit Boot Services Returned with Success"),
     ];
+
     debug_print_log("RTMR1", &rtmr1_log);
     Ok(measure_log(&rtmr1_log))
+}
+
+/// Measures RTMR2 for direct boot from file paths.
+pub(crate) fn measure_rtmr2_direct(
+    initrd_path: &str,
+    kernel_cmdline: &str,
+) -> Result<Vec<u8>> {
+
+    // Reads our initrd file
+    let initrd_data = fs::read(initrd_path).context("Failed to read initrd file")?;
+
+    // OVFM adds initrd to the command line
+    let cmdline = kernel_cmdline.to_string() + " initrd=initrd";
+
+    // Compute RTMR2 log
+    let rtmr2_log = vec![
+        crate::util::measure_cmdline(&cmdline),
+        measure_sha384(&initrd_data),
+    ];
+
+    debug_print_log("RTMR2", &rtmr2_log);
+    Ok(measure_log(&rtmr2_log))
 }
