@@ -3,6 +3,8 @@ use sha2::{Digest, Sha384};
 use crate::{num::read_le};
 use anyhow::{bail, Result};
 use object::pe;
+use std::fs;
+use std::path::Path;
 
 /// Computes a SHA384 hash of the given data.
 pub(crate) fn measure_sha384(data: &[u8]) -> Vec<u8> {
@@ -22,6 +24,20 @@ pub(crate) fn debug_print_log(name: &str, log: &[Vec<u8>]) {
         debug!("[{i}] digest: {}", hex::encode(entry));
     }
 }
+
+/// Reads file data and returns the data or fails with an error
+pub(crate) fn read_file_data(filename: &str) -> Result<Vec<u8>> {
+    match fs::read(filename) {
+        Ok(data) => {
+            debug!("Loaded {} bytes from {}", data.len(), filename);
+            Ok(data)
+        }
+        Err(e) => {
+            bail!("Failed to load file {}: {}", filename, e);
+        }
+    }
+}
+
 /// Computes a measurement of the given RTMR event log.
 pub(crate) fn measure_log(log: &[Vec<u8>]) -> Vec<u8> {
     let mut mr = [0u8; 48]; // SHA384 output size

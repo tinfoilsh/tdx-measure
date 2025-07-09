@@ -1,13 +1,10 @@
 use anyhow::{anyhow, bail, Context, Result};
 use hex_literal::hex;
 use sha2::{Digest, Sha384};
-use log::debug;
-use std::fs;
-use std::path::Path;
 
 use crate::num::read_le;
-use crate::util::debug_print_log;
-use crate::{measure_log, measure_sha384, utf16_encode, Machine};
+use crate::util::{debug_print_log, measure_sha384, measure_log, utf16_encode, read_file_data};
+use crate::Machine;
 
 const PAGE_SIZE: u64 = 0x1000;
 const MR_EXTEND_GRANULARITY: usize = 0x100;
@@ -84,26 +81,6 @@ fn measure_tdx_efi_variable(vendor_guid: &str, var_name: &str, var_data: Option<
     }
     
     Ok(measure_sha384(&data))
-}
-
-// Add this helper function to read boot variable data
-fn read_file_data(filename: &str) -> Result<Option<Vec<u8>>> {
-    let path = Path::new(filename);
-    if path.exists() {
-        match fs::read(path) {
-            Ok(data) => {
-                debug!("Loaded {} bytes from {}", data.len(), filename);
-                Ok(Some(data))
-            }
-            Err(e) => {
-                debug!("Failed to read {}: {}", filename, e);
-                Ok(None)
-            }
-        }
-    } else {
-        debug!("File {} not found, using None for variable data", filename);
-        Ok(None)
-    }
 }
 
 impl<'a> Tdvf<'a> {
@@ -289,11 +266,11 @@ impl<'a> Tdvf<'a> {
             acpi_loader_hash,
             acpi_rsdp_hash,
             acpi_tables_hash,
-            measure_sha384(&boot_order_data.unwrap()),
-            measure_sha384(&boot0007_data.unwrap()),
-            measure_sha384(&boot0001_data.unwrap()),
-            measure_sha384(&boot0000_data.unwrap()),
-            measure_sha384(&boot0006_data.unwrap()),
+            measure_sha384(&boot_order_data),
+            measure_sha384(&boot0007_data),
+            measure_sha384(&boot0001_data),
+            measure_sha384(&boot0000_data),
+            measure_sha384(&boot0006_data),
         ];
 
         if !machine.direct_boot {
