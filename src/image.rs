@@ -1,19 +1,10 @@
-use crate::{measure_log, measure_sha384, num::read_le, util::{debug_print_log, authenticode_sha384_hash}};
+use crate::{measure_log, measure_sha384, util::{debug_print_log, authenticode_sha384_hash}};
 use anyhow::{bail, Context, Result};
-use object::pe;
 use std::fs;
 use std::path::Path;
 use std::process::Command;
 use log::debug; 
 use crate::util::utf16_encode;
-
-/// Represents extracted bootloader components from a disk image
-#[derive(Debug)]
-pub struct BootloaderComponents {
-    pub gpt_data: Vec<u8>,
-    pub shim_data: Vec<u8>,
-    pub grub_data: Vec<u8>,
-}
 
 /// Helper function to download a file using guestfish
 fn guestfish_download(qcow2_path: &str, source_path: &str) -> Result<Vec<u8>> {
@@ -143,171 +134,7 @@ fn extract_gpt_event_data(qcow2_path: &str) -> Result<Vec<u8>> {
     Ok(gpt_event_data)
 }
 
-/// Extracts bootloader components from a qcow2 disk image
-pub fn extract_bootloader_components(qcow2_path: &str) -> Result<BootloaderComponents> {
-
-    // Extract GPT event data
-    let gpt_data = extract_gpt_event_data(qcow2_path)?;
-
-    // Extract bootloader files
-    let shim_data = guestfish_download(qcow2_path, "/boot/efi/EFI/ubuntu/shimx64.efi")?;
-    let grub_data = guestfish_download(qcow2_path, "/boot/efi/EFI/ubuntu/grubx64.efi")?;
-    
-    Ok(BootloaderComponents {
-        gpt_data,
-        shim_data,
-        grub_data,
-    })
-}
-
-/// Represents the cert_table structure from shim
-#[derive(Debug)]
-struct _CertTable {
-    vendor_authorized_size: u32,
-    vendor_deauthorized_size: u32,
-    vendor_authorized_offset: u32,
-    vendor_deauthorized_offset: u32,
-}
-
-/// Extracts the cert_table structure from shim PE binary
-fn _find_cert_table_offset(shim_data: &[u8]) -> Result<usize> {
-    // Parse PE header to find sections
-    let lfanew_offset = 0x3c;
-    let lfanew: u32 = read_le(shim_data, lfanew_offset, "DOS header")?;
-
-    let pe_sig_offset = lfanew as usize;
-    let pe_sig: u32 = read_le(shim_data, pe_sig_offset, "PE signature offset")?;
-    if pe_sig != pe::IMAGE_NT_SIGNATURE {
-        bail!("Invalid PE signature in shim");
-    }
-
-    let coff_header_offset = pe_sig_offset + 4;
-    let optional_header_size = read_le::<u16>(shim_data, coff_header_offset + 16, "COFF header size")? as usize;
-    let num_sections = read_le::<u16>(shim_data, coff_header_offset + 2, "number of sections")? as usize;
-
-    let optional_header_offset = coff_header_offset + 20;
-    let section_table_offset = optional_header_offset + optional_header_size;
-    let section_size = 40;
-
-    // Look for .vendor_cert section or similar
-    for i in 0..num_sections {
-        let section_offset = section_table_offset + (i * section_size);
-        
-        if section_offset + section_size > shim_data.len() {
-            break;
-        }
-
-        // Read section name (8 bytes)
-        let section_name = &shim_data[section_offset..section_offset + 8];
-        
-        // Check if this could be a certificate section
-        if section_name.starts_with(b".vendor_") || section_name.starts_with(b".cert") {
-            let _virtual_address = read_le::<u32>(shim_data, section_offset + 12, "virtual address")? as usize;
-            let raw_data_offset = read_le::<u32>(shim_data, section_offset + 20, "raw data offset")? as usize;
-            let raw_data_size = read_le::<u32>(shim_data, section_offset + 16, "raw data size")? as usize;
-            
-            if raw_data_offset + raw_data_size <= shim_data.len() && raw_data_size >= 16 {
-                // This could be our cert_table - try to validate it
-                if let Ok(cert_table) = _parse_cert_table(shim_data, raw_data_offset) {
-                    // Basic validation: check if offsets are reasonable
-                    if cert_table.vendor_authorized_offset < raw_data_size as u32 && 
-                       cert_table.vendor_deauthorized_offset < raw_data_size as u32 {
-                        return Ok(raw_data_offset);
-                    }
-                }
-            }
-        }
-    }
-
-    // If we can't find a specific section, try to search for the cert_table pattern
-    // Look for a pattern that could be cert_table (4 consecutive u32s with reasonable values)
-    for i in 0..shim_data.len().saturating_sub(16) {
-        if i % 4 == 0 {  // Align to 4-byte boundary
-            if let Ok(cert_table) = _parse_cert_table(shim_data, i) {
-                // Validate the cert_table structure
-                if cert_table.vendor_authorized_size > 0 && 
-                   cert_table.vendor_authorized_size < 0x10000 &&
-                   cert_table.vendor_authorized_offset > 0 &&
-                   cert_table.vendor_authorized_offset < shim_data.len() as u32 {
-                    return Ok(i);
-                }
-            }
-        }
-    }
-
-    bail!("Could not find cert_table in shim binary");
-}
-
-/// Parses the cert_table structure from a given offset
-fn _parse_cert_table(shim_data: &[u8], offset: usize) -> Result<_CertTable> {
-    if offset + 16 > shim_data.len() {
-        bail!("Cert table offset out of bounds");
-    }
-
-    let vendor_authorized_size = read_le::<u32>(shim_data, offset, "vendor_authorized_size")?;
-    let vendor_deauthorized_size = read_le::<u32>(shim_data, offset + 4, "vendor_deauthorized_size")?;
-    let vendor_authorized_offset = read_le::<u32>(shim_data, offset + 8, "vendor_authorized_offset")?;
-    let vendor_deauthorized_offset = read_le::<u32>(shim_data, offset + 12, "vendor_deauthorized_offset")?;
-
-    Ok(_CertTable {
-        vendor_authorized_size,
-        vendor_deauthorized_size,
-        vendor_authorized_offset,
-        vendor_deauthorized_offset,
-    })
-}
-
-/// Extracts certificate data from shim binary
-fn _extract_cert_data_from_shim(shim_data: &[u8]) -> Result<(Vec<u8>, Vec<u8>)> {
-    let cert_table_offset = _find_cert_table_offset(shim_data)?;
-    let cert_table = _parse_cert_table(shim_data, cert_table_offset)?;
-
-    // Extract vendor_authorized data
-    let vendor_auth_start = cert_table_offset + cert_table.vendor_authorized_offset as usize;
-    let vendor_auth_end = vendor_auth_start + cert_table.vendor_authorized_size as usize;
-    
-    let vendor_auth_data = if vendor_auth_end <= shim_data.len() && cert_table.vendor_authorized_size > 0 {
-        shim_data[vendor_auth_start..vendor_auth_end].to_vec()
-    } else {
-        Vec::new()
-    };
-
-    // Extract vendor_deauthorized data
-    let vendor_deauth_start = cert_table_offset + cert_table.vendor_deauthorized_offset as usize;
-    let vendor_deauth_end = vendor_deauth_start + cert_table.vendor_deauthorized_size as usize;
-    
-    let vendor_deauth_data = if vendor_deauth_end <= shim_data.len() && cert_table.vendor_deauthorized_size > 0 {
-        shim_data[vendor_deauth_start..vendor_deauth_end].to_vec()
-    } else {
-        Vec::new()
-    };
-
-    Ok((vendor_auth_data, vendor_deauth_data))
-}
-
-/// Reconstructs MOK variables as shim would build them
-pub fn _reconstruct_mok_variables(shim_data: &[u8]) -> Result<(Vec<u8>, Vec<u8>, Vec<u8>)> {
-    let (vendor_auth_data, vendor_deauth_data) = _extract_cert_data_from_shim(shim_data)?;
-
-    // Reconstruct MokList variable
-    // Order: vendor_authorized + build_cert (if any) + user_cert (if any) + existing MokList
-    let mut mok_list = Vec::new();
-    mok_list.extend_from_slice(&vendor_auth_data);
-    // Note: For now, we're only including vendor_authorized data
-    // In a full implementation, you'd also need to extract build_cert and user_cert
-
-    // Reconstruct MokListX variable  
-    // Order: vendor_deauthorized + existing MokListX
-    let mut mok_list_x = Vec::new();
-    mok_list_x.extend_from_slice(&vendor_deauth_data);
-
-    // Reconstruct MokListTrusted variable
-    // Default to 0x01 (trusted) if variable doesn't exist
-    let mok_list_trusted = vec![0x01];
-
-    Ok((mok_list, mok_list_x, mok_list_trusted))
-}
-
+/// Reads the data from a file
 fn read_file_data(filename: &str) -> Result<Vec<u8>> {
     let path = Path::new(filename);
     if path.exists() {
@@ -349,14 +176,15 @@ fn extract_kernel_version_from_cmdline(cmdline: &str) -> Result<String> {
 /// Main function to measure RTMR1 from a qcow2 disk image
 pub fn measure_rtmr1_from_qcow2(qcow2_path: &str) -> Result<Vec<u8>> {
 
-    // Extract bootloader components from the disk image
-    let components = extract_bootloader_components(qcow2_path)
-        .context("Failed to extract bootloader components")?;
-    
+    // Extract bootloader files
+    let gpt_data = extract_gpt_event_data(qcow2_path)?;
+    let shim_data = guestfish_download(qcow2_path, "/boot/efi/EFI/ubuntu/shimx64.efi")?;
+    let grub_data = guestfish_download(qcow2_path, "/boot/efi/EFI/ubuntu/grubx64.efi")?;
+
     // Compute hashes of the bootloader components
-    let gpt_hash = measure_sha384(&components.gpt_data);
-    let shim_hash = authenticode_sha384_hash(&components.shim_data).context("Failed to compute shim hash")?;
-    let grub_hash = authenticode_sha384_hash(&components.grub_data).context("Failed to compute grub hash")?;
+    let gpt_hash = measure_sha384(&gpt_data);
+    let shim_hash = authenticode_sha384_hash(&shim_data).context("Failed to compute shim hash")?;
+    let grub_hash = authenticode_sha384_hash(&grub_data).context("Failed to compute grub hash")?;
     
     // Compute RTMR1 log
     let rtmr1_log = vec![
