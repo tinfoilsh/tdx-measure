@@ -61,8 +61,9 @@ impl Machine<'_> {
         if self.direct_boot {
             let initrd_path = self.initrd.ok_or_else(|| anyhow::anyhow!("Initrd path required for direct boot"))?;
             let initrd_data = fs::read(initrd_path)?;
+            let cmdline = self.kernel_cmdline.to_string() + " initrd=initrd";
             let rtmr2_log = vec![
-                measure_cmdline(self.kernel_cmdline),
+                measure_cmdline(&cmdline),
                 measure_sha384(&initrd_data),
             ];
             debug_print_log("RTMR2", &rtmr2_log);

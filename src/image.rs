@@ -1,10 +1,11 @@
-use crate::{measure_log, measure_sha384, num::read_le, util::{debug_print_log, authenticode_sha384_hash, measure_cmdline}};
+use crate::{measure_log, measure_sha384, num::read_le, util::{debug_print_log, authenticode_sha384_hash}};
 use anyhow::{bail, Context, Result};
 use object::pe;
 use std::fs;
 use std::path::Path;
 use std::process::Command;
 use log::debug; 
+use crate::util::utf16_encode;
 
 /// Represents extracted bootloader components from a disk image
 #[derive(Debug)]
@@ -14,34 +15,21 @@ pub struct BootloaderComponents {
     pub grub_data: Vec<u8>,
 }
 
-/// Extracts bootloader components from a qcow2 disk image
-pub fn extract_bootloader_components(qcow2_path: &str) -> Result<BootloaderComponents> {
-    let temp_dir = std::env::temp_dir().join("tdx_bootloader_extract");
-    std::fs::create_dir_all(&temp_dir)?;
+/// Helper function to download a file using guestfish
+fn guestfish_download(qcow2_path: &str, source_path: &str, dest_path: &Path) -> Result<()> {
+    let output = Command::new("guestfish")
+        .args(&[
+            "--ro", "-a", qcow2_path, "-i",
+            "download", source_path, dest_path.to_str().unwrap()
+        ])
+        .output()
+        .context(format!("Failed to extract {}", source_path))?;
     
-    // Use the direct guestfish approach
-    extract_with_guestfish_direct(qcow2_path, &temp_dir)?;
+    if !output.status.success() {
+        bail!("Failed to extract {}: {}", source_path, String::from_utf8_lossy(&output.stderr));
+    }
     
-    let gpt_path = temp_dir.join("gpt_data.bin");
-    let shim_path = temp_dir.join("shim_data.efi");
-    let grub_path = temp_dir.join("grub_data.efi");
-    
-    // Read the extracted files
-    let gpt_data = std::fs::read(&gpt_path)
-        .context("Failed to read extracted GPT data")?;
-    let shim_data = std::fs::read(&shim_path)
-        .context("Failed to read extracted shim data")?;
-    let grub_data = std::fs::read(&grub_path)
-        .context("Failed to read extracted grub data")?;
-    
-    // Cleanup temp files
-    let _ = std::fs::remove_dir_all(&temp_dir);
-    
-    Ok(BootloaderComponents {
-        gpt_data,
-        shim_data,
-        grub_data,
-    })
+    Ok(())
 }
 
 /// Extracts GPT event data in the format used by EV_EFI_GPT_EVENT
@@ -141,42 +129,43 @@ fn extract_gpt_event_data(qcow2_path: &str) -> Result<Vec<u8>> {
 
 /// Direct implementation using guestfish commands
 fn extract_with_guestfish_direct(qcow2_path: &str, output_dir: &Path) -> Result<()> {
-    let gpt_path = output_dir.join("gpt_data.bin");
-    let shim_path = output_dir.join("shim_data.efi");
-    let grub_path = output_dir.join("grub_data.efi");
-    
-    // Extract GPT event data (not raw sectors)
+    // Extract GPT event data
     let gpt_data = extract_gpt_event_data(qcow2_path)?;
-    std::fs::write(&gpt_path, &gpt_data)?;
+    std::fs::write(output_dir.join("gpt_data.bin"), &gpt_data)?;
     
-    // Extract shim
-    let output = Command::new("guestfish")
-        .args(&[
-            "--ro", "-a", qcow2_path, "-i",
-            "download", "/boot/efi/EFI/ubuntu/shimx64.efi", shim_path.to_str().unwrap()
-        ])
-        .output()
-        .context("Failed to extract shim")?;
-    
-    if !output.status.success() {
-        bail!("Failed to extract shim: {}", String::from_utf8_lossy(&output.stderr));
-    }
-    
-    // Extract grub
-    let output = Command::new("guestfish")
-        .args(&[
-            "--ro", "-a", qcow2_path, "-i",
-            "download", "/boot/efi/EFI/ubuntu/grubx64.efi", grub_path.to_str().unwrap()
-        ])
-        .output()
-        .context("Failed to extract grub")?;
-    
-    if !output.status.success() {
-        bail!("Failed to extract grub: {}", String::from_utf8_lossy(&output.stderr));
-    }
+    // Extract bootloader files
+    guestfish_download(qcow2_path, "/boot/efi/EFI/ubuntu/shimx64.efi", &output_dir.join("shim_data.efi"))?;
+    guestfish_download(qcow2_path, "/boot/efi/EFI/ubuntu/grubx64.efi", &output_dir.join("grub_data.efi"))?;
     
     Ok(())
 }
+
+/// Extracts bootloader components from a qcow2 disk image
+pub fn extract_bootloader_components(qcow2_path: &str) -> Result<BootloaderComponents> {
+    let temp_dir = std::env::temp_dir().join("tdx_bootloader_extract");
+    std::fs::create_dir_all(&temp_dir)?;
+    
+    extract_with_guestfish_direct(qcow2_path, &temp_dir)?;
+    
+    // Read all extracted files
+    let gpt_data = std::fs::read(temp_dir.join("gpt_data.bin"))
+        .context("Failed to read extracted GPT data")?;
+    let shim_data = std::fs::read(temp_dir.join("shim_data.efi"))
+        .context("Failed to read extracted shim data")?;
+    let grub_data = std::fs::read(temp_dir.join("grub_data.efi"))
+        .context("Failed to read extracted grub data")?;
+    
+    // Cleanup
+    let _ = std::fs::remove_dir_all(&temp_dir);
+    
+    Ok(BootloaderComponents {
+        gpt_data,
+        shim_data,
+        grub_data,
+    })
+}
+
+
 
 /// Measures RTMR1 for bootloader-based deployments
 pub(crate) fn measure_bootloader_chain(
@@ -377,27 +366,27 @@ fn read_file_data(filename: &str) -> Result<Vec<u8>> {
 }
 
 /// Measures RTMR2 using actual MOK variable data extracted from shim
-pub fn measure_rtmr2_from_qcow2(_qcow2_path: &str, cmdline: &str, ref_mok_list: &str, ref_mok_list_trusted: &str, ref_mok_list_x: &str) -> Result<Vec<u8>> {
+pub fn measure_rtmr2_from_qcow2(qcow2_path: &str, cmdline: &str, ref_mok_list: &str, ref_mok_list_trusted: &str, ref_mok_list_x: &str) -> Result<Vec<u8>> {
     
-    // TODO: extract MOK variables from qcow2
-    // let components = extract_bootloader_components(qcow2_path)
-    //     .context("Failed to extract bootloader components")?;
-    
-    // let (mok_list, mok_list_x, mok_list_trusted) = reconstruct_mok_variables(&components.shim_data)
-    //     .context("Failed to reconstruct MOK variables")?;
+    // Extract initrd
+    let temp_dir = std::env::temp_dir().join("tdx_bootloader_extract");
+    std::fs::create_dir_all(&temp_dir)?;
+    let initrd_path = "/boot/initrd.img-6.8.0-60-generic";
+    guestfish_download(qcow2_path, &initrd_path, &temp_dir.join("initrd.img"))?;
+    let initrd_data = std::fs::read(temp_dir.join("initrd.img"))
+        .context("Failed to read extracted initrd data")?;
+    let _ = std::fs::remove_dir_all(&temp_dir);
 
     let ref_mok_list_data = read_file_data(ref_mok_list)?;
     let ref_mok_list_trusted_data = read_file_data(ref_mok_list_trusted)?;
     let ref_mok_list_x_data = read_file_data(ref_mok_list_x)?;
 
-    // TODO: extract initrd from qcow2
-
     let rtmr2_log = vec![
         measure_sha384(&ref_mok_list_data),
         measure_sha384(&ref_mok_list_x_data),
         measure_sha384(&ref_mok_list_trusted_data),
-        measure_cmdline(cmdline),
-        // measure_sha384(initrd_data),
+        measure_sha384(&utf16_encode(cmdline)),
+        measure_sha384(&initrd_data),
     ];
 
     debug_print_log("RTMR2", &rtmr2_log);
