@@ -2,7 +2,7 @@ use anyhow::{Context, Result, anyhow};
 use clap::{Parser, Subcommand};
 use dstack_mr::{Machine, ImageConfig};
 use fs_err as fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -85,96 +85,147 @@ struct MachineConfig {
     platform_only: bool,
 }
 
-fn build_machine_for_direct_boot<'a>(
-    config: &'a MachineConfig,
-    firmware_path: &'a str,
-    cmdline: &'a str,
-    acpi_tables_path: &'a str,
-    rsdp_path: &'a str,
-    table_loader_path: &'a str,
-    boot_order_path: &'a str,
-    boot_0000_path: &'a str,
-    boot_0001_path: &'a str,
-    boot_0006_path: &'a str,
-    boot_0007_path: &'a str,
-    kernel_path: &'a str,
-    initrd_path: &'a str,
-) -> Machine<'a> {
-    Machine::builder()
-        .cpu_count(config.cpu)
-        .memory_size(config.memory)
-        .firmware(firmware_path)
-        .kernel(kernel_path)
-        .initrd(initrd_path)
-        .kernel_cmdline(cmdline)
-        .acpi_tables(acpi_tables_path)
-        .rsdp(rsdp_path)
-        .table_loader(table_loader_path)
-        .boot_order(boot_order_path)
-        .boot_0000(boot_0000_path)
-        .boot_0001(boot_0001_path)
-        .boot_0006(boot_0006_path)
-        .boot_0007(boot_0007_path)
-        .two_pass_add_pages(config.two_pass_add_pages)
-        .pic(config.pic)
-        .smm(config.smm)
-        .maybe_pci_hole64_size(config.pci_hole64_size)
-        .hugepages(config.hugepages)
-        .num_gpus(config.num_gpus)
-        .num_nvswitches(config.num_nvswitches)
-        .hotplug_off(config.hotplug_off)
-        .root_verity(config.root_verity)
-        .direct_boot(true)
-        .build()
+/// Helper struct to resolve and store file paths
+struct PathResolver {
+    paths: PathStorage,
 }
 
-fn build_machine_for_indirect_boot<'a>(
-    config: &'a MachineConfig,
-    firmware_path: &'a str,
-    cmdline: &'a str,
-    acpi_tables_path: &'a str,
-    rsdp_path: &'a str,
-    table_loader_path: &'a str,
-    boot_order_path: &'a str,
-    boot_0000_path: &'a str,
-    boot_0001_path: &'a str,
-    boot_0006_path: &'a str,
-    boot_0007_path: &'a str,
-    qcow2_path: &'a str,
-    mok_list_path: &'a str,
-    mok_list_trusted_path: &'a str,
-    mok_list_x_path: &'a str,
-    sbat_level_path: &'a str,
-) -> Machine<'a> {
-    Machine::builder()
-        .cpu_count(config.cpu)
-        .memory_size(config.memory)
-        .firmware(firmware_path)
-        .qcow2(qcow2_path)
-        .kernel_cmdline(cmdline)
-        .acpi_tables(acpi_tables_path)
-        .rsdp(rsdp_path)
-        .table_loader(table_loader_path)
-        .boot_order(boot_order_path)
-        .boot_0000(boot_0000_path)
-        .boot_0001(boot_0001_path)
-        .boot_0006(boot_0006_path)
-        .boot_0007(boot_0007_path)
-        .mok_list(mok_list_path)
-        .mok_list_trusted(mok_list_trusted_path)
-        .mok_list_x(mok_list_x_path)
-        .sbat_level(sbat_level_path)
-        .two_pass_add_pages(config.two_pass_add_pages)
-        .pic(config.pic)
-        .smm(config.smm)
-        .maybe_pci_hole64_size(config.pci_hole64_size)
-        .hugepages(config.hugepages)
-        .num_gpus(config.num_gpus)
-        .num_nvswitches(config.num_nvswitches)
-        .hotplug_off(config.hotplug_off)
-        .root_verity(config.root_verity)
-        .direct_boot(false)
-        .build()
+struct PathStorage {
+    firmware: String,
+    cmdline: String,
+    acpi_tables: String,
+    rsdp: String,
+    table_loader: String,
+    boot_order: String,
+    boot_0000: String,
+    boot_0001: String,
+    boot_0006: String,
+    boot_0007: String,
+    // Direct boot specific
+    kernel: Option<String>,
+    initrd: Option<String>,
+    // Indirect boot specific
+    qcow2: Option<String>,
+    mok_list: Option<String>,
+    mok_list_trusted: Option<String>,
+    mok_list_x: Option<String>,
+    sbat_level: Option<String>,
+}
+
+impl PathResolver {
+    fn new(metadata_path: &Path, image_config: &ImageConfig) -> Result<Self> {
+        let parent_dir = metadata_path.parent().unwrap_or(".".as_ref());
+        let boot_info = &image_config.boot_info;
+        
+        let paths = PathStorage {
+            firmware: parent_dir.join(&boot_info.bios).display().to_string(),
+            cmdline: format!("{} initrd=initrd", image_config.cmdline()),
+            acpi_tables: parent_dir.join(&boot_info.acpi_tables).display().to_string(),
+            rsdp: parent_dir.join(&boot_info.rsdp).display().to_string(),
+            table_loader: parent_dir.join(&boot_info.table_loader).display().to_string(),
+            boot_order: parent_dir.join(&boot_info.boot_order).display().to_string(),
+            boot_0000: parent_dir.join(&boot_info.boot_0000).display().to_string(),
+            boot_0001: parent_dir.join(&boot_info.boot_0001).display().to_string(),
+            boot_0006: parent_dir.join(&boot_info.boot_0006).display().to_string(),
+            boot_0007: parent_dir.join(&boot_info.boot_0007).display().to_string(),
+            kernel: image_config.direct_boot().map(|d| parent_dir.join(&d.kernel).display().to_string()),
+            initrd: image_config.direct_boot().map(|d| parent_dir.join(&d.initrd).display().to_string()),
+            qcow2: image_config.indirect_boot().map(|i| parent_dir.join(&i.qcow2).display().to_string()),
+            mok_list: image_config.indirect_boot().map(|i| parent_dir.join(&i.mok_list).display().to_string()),
+            mok_list_trusted: image_config.indirect_boot().map(|i| parent_dir.join(&i.mok_list_trusted).display().to_string()),
+            mok_list_x: image_config.indirect_boot().map(|i| parent_dir.join(&i.mok_list_x).display().to_string()),
+            sbat_level: image_config.indirect_boot().map(|i| parent_dir.join(&i.sbat_level).display().to_string()),
+        };
+        
+        Ok(Self { paths })
+    }
+    
+    fn build_machine(&self, config: &MachineConfig, direct_boot: bool) -> Machine {
+        Machine::builder()
+            .cpu_count(config.cpu)
+            .memory_size(config.memory)
+            .firmware(&self.paths.firmware)
+            .kernel_cmdline(&self.paths.cmdline)
+            .acpi_tables(&self.paths.acpi_tables)
+            .rsdp(&self.paths.rsdp)
+            .table_loader(&self.paths.table_loader)
+            .boot_order(&self.paths.boot_order)
+            .boot_0000(&self.paths.boot_0000)
+            .boot_0001(&self.paths.boot_0001)
+            .boot_0006(&self.paths.boot_0006)
+            .boot_0007(&self.paths.boot_0007)
+            .kernel(self.paths.kernel.as_deref().unwrap_or(""))
+            .initrd(self.paths.initrd.as_deref().unwrap_or(""))
+            .qcow2(self.paths.qcow2.as_deref().unwrap_or(""))
+            .mok_list(self.paths.mok_list.as_deref().unwrap_or(""))
+            .mok_list_trusted(self.paths.mok_list_trusted.as_deref().unwrap_or(""))
+            .mok_list_x(self.paths.mok_list_x.as_deref().unwrap_or(""))
+            .sbat_level(self.paths.sbat_level.as_deref().unwrap_or(""))
+            .two_pass_add_pages(config.two_pass_add_pages)
+            .pic(config.pic)
+            .smm(config.smm)
+            .maybe_pci_hole64_size(config.pci_hole64_size)
+            .hugepages(config.hugepages)
+            .num_gpus(config.num_gpus)
+            .num_nvswitches(config.num_nvswitches)
+            .hotplug_off(config.hotplug_off)
+            .root_verity(config.root_verity)
+            .direct_boot(direct_boot)
+            .build()
+    }
+}
+
+fn process_measurements(config: &MachineConfig, image_config: &ImageConfig) -> Result<()> {
+    // Validate the configuration
+    image_config.validate()
+        .map_err(|e| anyhow!("Invalid image configuration: {}", e))?;
+
+    // Determine boot mode: CLI flag overrides JSON configuration
+    let direct_boot = config.direct_boot.unwrap_or(image_config.is_direct_boot());
+    
+    // Validate boot mode configuration
+    match (direct_boot, image_config.direct_boot(), image_config.indirect_boot()) {
+        (true, None, _) => return Err(anyhow!("Direct boot mode specified but no direct boot configuration found in JSON")),
+        (false, _, None) => return Err(anyhow!("Indirect boot mode specified but no indirect boot configuration found in JSON")),
+        _ => {}
+    }
+    
+    // Build machine
+    let path_resolver = PathResolver::new(&config.metadata, image_config)?;
+    let machine = path_resolver.build_machine(config, direct_boot);
+    
+    // Measure
+    let measurements = if config.platform_only {
+        machine.measure_platform().context("Failed to measure platform")?
+    } else {
+        machine.measure().context("Failed to measure machine configuration")?
+    };
+    
+    // Output results
+    output_measurements(config, &measurements)?;
+    
+    Ok(())
+}
+
+fn output_measurements(config: &MachineConfig, measurements: &dstack_mr::TdxMeasurements) -> Result<()> {
+    let json_output = serde_json::to_string_pretty(measurements).unwrap();
+    
+    if config.json {
+        println!("{}", json_output);
+    } else {
+        println!("Machine measurements:");
+        println!("MRTD: {}", hex::encode(&measurements.mrtd));
+        println!("RTMR0: {}", hex::encode(&measurements.rtmr0));
+        println!("RTMR1: {}", hex::encode(&measurements.rtmr1));
+        println!("RTMR2: {}", hex::encode(&measurements.rtmr2));
+    }
+    
+    if let Some(ref json_file) = config.json_file {
+        fs::write(json_file, json_output)
+            .context("Failed to write measurements to file")?;
+    }
+    
+    Ok(())
 }
 
 fn main() -> Result<()> {
@@ -183,162 +234,12 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
     match &cli.command {
         Commands::Measure(config) => {
-            let metadata =
-                fs::read_to_string(&config.metadata).context("Failed to read image metadata")?;
-            let image_config: ImageConfig =
-                serde_json::from_str(&metadata).context("Failed to parse image metadata")?;
+            let metadata = fs::read_to_string(&config.metadata)
+                .context("Failed to read image metadata")?;
+            let image_config: ImageConfig = serde_json::from_str(&metadata)
+                .context("Failed to parse image metadata")?;
             
-            // Validate the configuration
-            image_config.validate()
-                .map_err(|e| anyhow!("Invalid image configuration: {}", e))?;
-
-            // Determine boot mode: CLI flag overrides JSON configuration
-            let direct_boot = config.direct_boot.unwrap_or(image_config.is_direct_boot());
-
-            let parent_dir = config.metadata.parent().unwrap_or(".".as_ref());
-            let boot_info = &image_config.boot_info;
-            
-            // Pre-allocate all strings to ensure they live long enough
-            let firmware_path = parent_dir.join(&boot_info.bios).display().to_string();
-            let cmdline = format!("{} initrd=initrd", image_config.cmdline());
-            let acpi_tables_path = parent_dir.join(&boot_info.acpi_tables).display().to_string();
-            let rsdp_path = parent_dir.join(&boot_info.rsdp).display().to_string();
-            let table_loader_path = parent_dir.join(&boot_info.table_loader).display().to_string();
-            let boot_order_path = parent_dir.join(&boot_info.boot_order).display().to_string();
-            let boot_0000_path = parent_dir.join(&boot_info.boot_0000).display().to_string();
-            let boot_0001_path = parent_dir.join(&boot_info.boot_0001).display().to_string();
-            let boot_0006_path = parent_dir.join(&boot_info.boot_0006).display().to_string();
-            let boot_0007_path = parent_dir.join(&boot_info.boot_0007).display().to_string();
-            
-            // Pre-allocate boot-mode specific strings
-            let kernel_path = if direct_boot {
-                if let Some(direct) = image_config.direct_boot() {
-                    parent_dir.join(&direct.kernel).display().to_string()
-                } else {
-                    return Err(anyhow!("Direct boot mode specified but no direct boot configuration found in JSON"));
-                }
-            } else {
-                String::new() // Not used in indirect boot
-            };
-            
-            let initrd_path = if direct_boot {
-                if let Some(direct) = image_config.direct_boot() {
-                    parent_dir.join(&direct.initrd).display().to_string()
-                } else {
-                    return Err(anyhow!("Direct boot mode specified but no direct boot configuration found in JSON"));
-                }
-            } else {
-                String::new() // Not used in indirect boot
-            };
-            
-            let qcow2_path = if !direct_boot {
-                if let Some(indirect) = image_config.indirect_boot() {
-                    parent_dir.join(&indirect.qcow2).display().to_string()
-                } else {
-                    return Err(anyhow!("Indirect boot mode specified but no indirect boot configuration found in JSON"));
-                }
-            } else {
-                String::new() // Not used in direct boot
-            };
-            
-            let mok_list_path = if !direct_boot {
-                if let Some(indirect) = image_config.indirect_boot() {
-                    parent_dir.join(&indirect.mok_list).display().to_string()
-                } else {
-                    return Err(anyhow!("Indirect boot mode specified but no indirect boot configuration found in JSON"));
-                }
-            } else {
-                String::new() // Not used in direct boot
-            };
-            
-            let mok_list_trusted_path = if !direct_boot {
-                if let Some(indirect) = image_config.indirect_boot() {
-                    parent_dir.join(&indirect.mok_list_trusted).display().to_string()
-                } else {
-                    return Err(anyhow!("Indirect boot mode specified but no indirect boot configuration found in JSON"));
-                }
-            } else {
-                String::new() // Not used in direct boot
-            };
-            
-            let mok_list_x_path = if !direct_boot {
-                if let Some(indirect) = image_config.indirect_boot() {
-                    parent_dir.join(&indirect.mok_list_x).display().to_string()
-                } else {
-                    return Err(anyhow!("Indirect boot mode specified but no indirect boot configuration found in JSON"));
-                }
-            } else {
-                String::new() // Not used in direct boot
-            };
-            
-            let sbat_level_path = if !direct_boot {
-                if let Some(indirect) = image_config.indirect_boot() {
-                    parent_dir.join(&indirect.sbat_level).display().to_string()
-                } else {
-                    return Err(anyhow!("Indirect boot mode specified but no indirect boot configuration found in JSON"));
-                }
-            } else {
-                String::new() // Not used in direct boot
-            };
-
-            // Build machine based on boot mode
-            let machine = if direct_boot {
-                build_machine_for_direct_boot(
-                    config,
-                    &firmware_path,
-                    &cmdline,
-                    &acpi_tables_path,
-                    &rsdp_path,
-                    &table_loader_path,
-                    &boot_order_path,
-                    &boot_0000_path,
-                    &boot_0001_path,
-                    &boot_0006_path,
-                    &boot_0007_path,
-                    &kernel_path,
-                    &initrd_path,
-                )
-            } else {
-                build_machine_for_indirect_boot(
-                    config,
-                    &firmware_path,
-                    &cmdline,
-                    &acpi_tables_path,
-                    &rsdp_path,
-                    &table_loader_path,
-                    &boot_order_path,
-                    &boot_0000_path,
-                    &boot_0001_path,
-                    &boot_0006_path,
-                    &boot_0007_path,
-                    &qcow2_path,
-                    &mok_list_path,
-                    &mok_list_trusted_path,
-                    &mok_list_x_path,
-                    &sbat_level_path,
-                )
-            };
-
-            let measurements = if config.platform_only {
-                machine.measure_platform().context("Failed to measure platform")?
-            } else {
-                machine.measure().context("Failed to measure machine configuration")?
-            };
-
-            if config.json {
-                println!("{}", serde_json::to_string_pretty(&measurements).unwrap());
-            } else {
-                println!("Machine measurements:");
-                println!("MRTD: {}", hex::encode(&measurements.mrtd));
-                println!("RTMR0: {}", hex::encode(&measurements.rtmr0));
-                println!("RTMR1: {}", hex::encode(&measurements.rtmr1));
-                println!("RTMR2: {}", hex::encode(&measurements.rtmr2));
-            }
-
-            if let Some(ref json_file) = config.json_file {
-                fs::write(json_file, serde_json::to_string_pretty(&measurements).unwrap())
-                    .context("Failed to write measurements to file")?;
-            }
+            process_measurements(config, &image_config)?;
         }
     }
 
