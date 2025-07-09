@@ -365,13 +365,36 @@ fn read_file_data(filename: &str) -> Result<Vec<u8>> {
     }
 }
 
+/// Extracts the kernel version from the command line BOOT_IMAGE parameter
+fn extract_kernel_version_from_cmdline(cmdline: &str) -> Result<String> {
+    // Look for BOOT_IMAGE parameter
+    for param in cmdline.split_whitespace() {
+        if param.starts_with("BOOT_IMAGE=") {
+            let boot_image = param.strip_prefix("BOOT_IMAGE=").unwrap();
+            // Extract version from vmlinuz filename
+            // Example: /vmlinuz-6.8.0-60-generic -> 6.8.0-60-generic
+            if let Some(version_start) = boot_image.find("vmlinuz-") {
+                let version = &boot_image[version_start + 8..]; // Skip "vmlinuz-"
+                if !version.is_empty() {
+                    return Ok(version.to_string());
+                }
+            }
+        }
+    }
+    bail!("Could not extract kernel version from command line: {}", cmdline);
+}
+
 /// Measures RTMR2 using actual MOK variable data extracted from shim
 pub fn measure_rtmr2_from_qcow2(qcow2_path: &str, cmdline: &str, ref_mok_list: &str, ref_mok_list_trusted: &str, ref_mok_list_x: &str) -> Result<Vec<u8>> {
     
     // Extract initrd
     let temp_dir = std::env::temp_dir().join("tdx_bootloader_extract");
     std::fs::create_dir_all(&temp_dir)?;
-    let initrd_path = "/boot/initrd.img-6.8.0-60-generic";
+    
+    // Extract kernel version from command line and construct initrd path
+    let kernel_version = extract_kernel_version_from_cmdline(cmdline)?;
+    let initrd_path = format!("/boot/initrd.img-{}", kernel_version);
+    
     guestfish_download(qcow2_path, &initrd_path, &temp_dir.join("initrd.img"))?;
     let initrd_data = std::fs::read(temp_dir.join("initrd.img"))
         .context("Failed to read extracted initrd data")?;

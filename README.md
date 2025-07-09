@@ -61,8 +61,6 @@ With this method, `OVMF` (the TDVF or virtual firmware) directly boots the kerne
 2) Indirect Boot:
 With this method, `tdvirsh` is used to run TDs, the boot chain is more complex and involves `OVMF`, a `SHIM`, `Grub`, and finally the `kernel`+`initrd` image.
 
-We currently only support direct boot method. Indirect boot support is under development.
-
 ### What goes in the measurements
 
 TDX attestation reports expose 4 measurement registers (MR).
