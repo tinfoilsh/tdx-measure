@@ -1,5 +1,5 @@
 use crate::tdvf::Tdvf;
-use crate::util::debug_print_log;
+use crate::util::{debug_print_log, measure_cmdline};
 use crate::{kernel, TdxMeasurements};
 use crate::image;
 use crate::{measure_log, measure_sha384};
@@ -66,7 +66,7 @@ impl Machine<'_> {
         let rtmr2;
         if self.direct_boot {
             let rtmr2_log = vec![
-                kernel::measure_cmdline(self.kernel_cmdline),
+                measure_cmdline(self.kernel_cmdline),
                 measure_sha384(&initrd_data),
             ];
             debug_print_log("RTMR2", &rtmr2_log);

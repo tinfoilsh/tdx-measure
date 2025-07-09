@@ -1,11 +1,10 @@
-use crate::{measure_log, measure_sha384, num::read_le, util::debug_print_log};
+use crate::{measure_log, measure_sha384, num::read_le, util::{debug_print_log, authenticode_sha384_hash, measure_cmdline}};
 use anyhow::{bail, Context, Result};
 use object::pe;
 use std::fs;
 use std::path::Path;
 use std::process::Command;
 use log::debug; 
-use crate::kernel;
 
 /// Represents extracted bootloader components from a disk image
 #[derive(Debug)]
@@ -186,8 +185,8 @@ pub(crate) fn measure_bootloader_chain(
     grub_data: &[u8],
 ) -> Result<Vec<u8>> {
     let gpt_hash = measure_sha384(gpt_data);
-    let shim_hash = kernel::authenticode_sha384_hash(shim_data).context("Failed to compute shim hash")?;
-    let grub_hash = kernel::authenticode_sha384_hash(grub_data).context("Failed to compute grub hash")?;
+    let shim_hash = authenticode_sha384_hash(shim_data).context("Failed to compute shim hash")?;
+    let grub_hash = authenticode_sha384_hash(grub_data).context("Failed to compute grub hash")?;
     
     let rtmr1_log = vec![
         measure_sha384(b"Calling EFI Application from Boot Option"),
@@ -395,7 +394,7 @@ pub fn measure_rtmr2_from_qcow2(_qcow2_path: &str, cmdline: &str, initrd_data: &
         measure_sha384(&ref_mok_list_data),
         measure_sha384(&ref_mok_list_x_data),
         measure_sha384(&ref_mok_list_trusted_data),
-        kernel::measure_cmdline(cmdline),
+        measure_cmdline(cmdline),
         measure_sha384(initrd_data),
     ];
 
