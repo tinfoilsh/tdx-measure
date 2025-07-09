@@ -248,12 +248,13 @@ impl<'a> Tdvf<'a> {
         let boot0000_data = read_file_data(machine.boot_0000)?;
         let boot0006_data = read_file_data(machine.boot_0006)?;
 
+        // Build ACPI tables
         let tables = machine.build_tables()?;
         let acpi_tables_hash = measure_sha384(&tables.tables);
         let acpi_rsdp_hash = measure_sha384(&tables.rsdp);
         let acpi_loader_hash = measure_sha384(&tables.loader);
 
-        // RTMR0 calculation
+        // Compute RTMR0 log
         let mut rtmr0_log = vec![
             td_hob_hash,
             cfv_image_hash.to_vec(),
@@ -273,6 +274,7 @@ impl<'a> Tdvf<'a> {
             measure_sha384(&boot0006_data),
         ];
 
+        // Add SbatLevel if not direct boot
         if !machine.direct_boot {
             rtmr0_log.push(measure_tdx_efi_variable("605DAB50-E046-4300-ABB6-3DD810DD8B23", "SbatLevel", Some(b"sbat,1,2021030218\n"))?);
         }
