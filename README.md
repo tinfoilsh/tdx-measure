@@ -3,7 +3,7 @@
 ## Scope
 Command-line tool and Rust library to calculate expected measurement of an Intel TDX guest VM for confidential computing.
 
-The `tdx-measure` tool takes a set of image binaries and platform config files as an input and outputs the corresponding TDX measurements. This makes it possible to exhaustively publish all images and config files that uniquely identify a TDX workload on a machine, making TD environments transparent and auditable by a third party.
+The `tdx-measure` tool takes a set of image binaries and platform config files as an input and outputs the corresponding TDX measurements. This makes it possible to exhaustively publish all images and config files that uniquely identify a TDX workload on a machine, making TD environments transparent and auditable.
 
 The tool specifically targets the boot chains from the Canonical TDX [repo](https://github.com/canonical/tdx).
 
