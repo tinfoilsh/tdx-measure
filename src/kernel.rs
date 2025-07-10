@@ -88,7 +88,7 @@ fn patch_kernel(
 }
 
 /// Measures a QEMU-patched TDX kernel image from file paths (for direct boot).
-pub(crate) fn measure_rtm1_direct(
+pub(crate) fn measure_rtmr1_direct(
     kernel_path: &str,
     initrd_path: &str,
     mem_size: u64,
