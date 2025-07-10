@@ -55,10 +55,7 @@ struct PathStorage {
     rsdp: String,
     table_loader: String,
     boot_order: String,
-    boot_0000: String,
-    boot_0001: String,
-    boot_0006: String,
-    boot_0007: String,
+    path_boot_xxxx: String,
     // Direct boot specific
     kernel: Option<String>,
     initrd: Option<String>,
@@ -82,10 +79,7 @@ impl PathResolver {
             rsdp: parent_dir.join(&boot_info.rsdp).display().to_string(),
             table_loader: parent_dir.join(&boot_info.table_loader).display().to_string(),
             boot_order: parent_dir.join(&boot_info.boot_order).display().to_string(),
-            boot_0000: parent_dir.join(&boot_info.boot_0000).display().to_string(),
-            boot_0001: parent_dir.join(&boot_info.boot_0001).display().to_string(),
-            boot_0006: parent_dir.join(&boot_info.boot_0006).display().to_string(),
-            boot_0007: parent_dir.join(&boot_info.boot_0007).display().to_string(),
+            path_boot_xxxx: parent_dir.join(&boot_info.path_boot_xxxx).display().to_string(),
             kernel: image_config.direct_boot().map(|d| parent_dir.join(&d.kernel).display().to_string()),
             initrd: image_config.direct_boot().map(|d| parent_dir.join(&d.initrd).display().to_string()),
             qcow2: image_config.indirect_boot().map(|i| parent_dir.join(&i.qcow2).display().to_string()),
@@ -108,10 +102,7 @@ impl PathResolver {
             .rsdp(&self.paths.rsdp)
             .table_loader(&self.paths.table_loader)
             .boot_order(&self.paths.boot_order)
-            .boot_0000(&self.paths.boot_0000)
-            .boot_0001(&self.paths.boot_0001)
-            .boot_0006(&self.paths.boot_0006)
-            .boot_0007(&self.paths.boot_0007)
+            .path_boot_xxxx(&self.paths.path_boot_xxxx)
             .kernel(self.paths.kernel.as_deref().unwrap_or(""))
             .initrd(self.paths.initrd.as_deref().unwrap_or(""))
             .qcow2(self.paths.qcow2.as_deref().unwrap_or(""))

@@ -100,20 +100,9 @@ fn parse_boot_order(boot_order_data: &[u8]) -> Result<Vec<u16>> {
 
 /// Loads boot variable data if the corresponding file exists
 fn load_boot_variable_if_exists(boot_entry_num: u16, machine: &Machine) -> Result<Option<Vec<u8>>> {
-    let filename = match boot_entry_num {
-        0 => machine.boot_0000,
-        1 => machine.boot_0001,
-        6 => machine.boot_0006,
-        7 => machine.boot_0007,
-        _ => {
-            // For boot entries not currently supported by Machine struct, 
-            // we skip them but don't error out
-            return Ok(None);
-        }
-    };
-    
+    let filename = format!("{}Boot{:04}.bin", machine.path_boot_xxxx, boot_entry_num);
     // Try to read the file, return None if it doesn't exist
-    match read_file_data(filename) {
+    match read_file_data(&filename) {
         Ok(data) => Ok(Some(data)),
         Err(_) => {
             // File doesn't exist or can't be read, skip this boot entry

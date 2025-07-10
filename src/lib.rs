@@ -38,10 +38,7 @@ pub struct BootInfo {
     pub rsdp: String,
     pub table_loader: String,
     pub boot_order: String,
-    pub boot_0000: String,
-    pub boot_0001: String,
-    pub boot_0006: String,
-    pub boot_0007: String,
+    pub path_boot_xxxx: String,
 }
 
 /// Direct boot specific information

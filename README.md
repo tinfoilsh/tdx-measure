@@ -53,10 +53,7 @@ These files follow standard formats that can easily be audited (for instance, AC
     "rsdp": "rsdp.bin",
     "table_loader": "table_loader.bin",
     "boot_order": "BootOrder.bin",
-    "boot_0000": "Boot0000.bin",
-    "boot_0001": "Boot0001.bin",
-    "boot_0006": "Boot0006.bin",
-    "boot_0007": "Boot0007.bin"
+    "path_boot_xxxx": [path for Boot_xxxx.bin variables],
   },
   "direct": {
     "kernel": "vmlinuz",
@@ -76,10 +73,7 @@ These files follow standard formats that can easily be audited (for instance, AC
     "rsdp": "rsdp.bin",
     "table_loader": "table_loader.bin",
     "boot_order": "BootOrder.bin",
-    "boot_0000": "Boot0000.bin",
-    "boot_0001": "Boot0001.bin",
-    "boot_0006": "Boot0006.bin",
-    "boot_0007": "Boot0007.bin"
+    "path_boot_xxxx": [path for Boot_xxxx.bin variables],
   },
   "indirect": {
     "qcow2": "tdx-guest-ubuntu-24.04-generic.qcow2",
