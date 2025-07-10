@@ -20,6 +20,7 @@ pub struct TdxMeasurements {
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub mrtd: Vec<u8>,
     #[serde(with = "hex_bytes")]
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub rtmr0: Vec<u8>,
     #[serde(with = "hex_bytes")]
     #[serde(skip_serializing_if = "Vec::is_empty")]
