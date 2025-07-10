@@ -19,7 +19,7 @@ struct Cli {
     metadata: PathBuf,
 
     /// Enable two-pass add pages
-    #[arg(long, default_value = "true")]
+    #[arg(long)]
     two_pass_add_pages: bool,
 
     /// Enable direct boot (overrides JSON configuration)
