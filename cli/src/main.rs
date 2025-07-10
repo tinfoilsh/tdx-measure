@@ -37,6 +37,10 @@ struct Cli {
     /// Compute MRTD and RTMR0 only
     #[arg(long)]
     platform_only: bool,
+
+    /// Compute RTMR1 and RTMR2 only
+    #[arg(long)]
+    runtime_only: bool,
 }
 
 /// Helper struct to resolve and store file paths
@@ -143,6 +147,8 @@ fn process_measurements(config: &Cli, image_config: &ImageConfig) -> Result<()> 
     // Measure
     let measurements = if config.platform_only {
         machine.measure_platform().context("Failed to measure platform")?
+    } else if config.runtime_only {
+        machine.measure_runtime().context("Failed to measure runtime")?
     } else {
         machine.measure().context("Failed to measure machine configuration")?
     };
