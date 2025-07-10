@@ -4,6 +4,9 @@ use tdx_measure::{Machine, ImageConfig};
 use fs_err as fs;
 use std::path::{Path, PathBuf};
 
+mod transcript;
+use transcript::generate_transcript;
+
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
 struct Cli {
@@ -37,37 +40,41 @@ struct Cli {
     /// Compute MRTD and RTMR0 only
     #[arg(long)]
     platform_only: bool,
+
+    /// Generate a human-readable transcript of all metadata files and write to the specified file
+    #[arg(long)]
+    transcript: Option<PathBuf>,
 }
 
 /// Helper struct to resolve and store file paths
-struct PathResolver {
-    paths: PathStorage,
+pub struct PathResolver {
+    pub paths: PathStorage,
 }
 
-struct PathStorage {
-    firmware: String,
-    cmdline: String,
-    acpi_tables: String,
-    rsdp: String,
-    table_loader: String,
-    boot_order: String,
-    boot_0000: String,
-    boot_0001: String,
-    boot_0006: String,
-    boot_0007: String,
+pub struct PathStorage {
+    pub firmware: String,
+    pub cmdline: String,
+    pub acpi_tables: String,
+    pub rsdp: String,
+    pub table_loader: String,
+    pub boot_order: String,
+    pub boot_0000: String,
+    pub boot_0001: String,
+    pub boot_0006: String,
+    pub boot_0007: String,
     // Direct boot specific
-    kernel: Option<String>,
-    initrd: Option<String>,
+    pub kernel: Option<String>,
+    pub initrd: Option<String>,
     // Indirect boot specific
-    qcow2: Option<String>,
-    mok_list: Option<String>,
-    mok_list_trusted: Option<String>,
-    mok_list_x: Option<String>,
-    sbat_level: Option<String>,
+    pub qcow2: Option<String>,
+    pub mok_list: Option<String>,
+    pub mok_list_trusted: Option<String>,
+    pub mok_list_x: Option<String>,
+    pub sbat_level: Option<String>,
 }
 
 impl PathResolver {
-    fn new(metadata_path: &Path, image_config: &ImageConfig) -> Result<Self> {
+    pub fn new(metadata_path: &Path, image_config: &ImageConfig) -> Result<Self> {
         let parent_dir = metadata_path.parent().unwrap_or(".".as_ref());
         let boot_info = &image_config.boot_info;
         
@@ -182,6 +189,11 @@ fn main() -> Result<()> {
         .context("Failed to read image metadata")?;
     let image_config: ImageConfig = serde_json::from_str(&metadata)
         .context("Failed to parse image metadata")?;
+    
+    // Handle transcript mode
+    if let Some(ref transcript_file) = cli.transcript {
+        return generate_transcript(transcript_file, &image_config, &cli.metadata);
+    }
     
     process_measurements(&cli, &image_config)?;
 
