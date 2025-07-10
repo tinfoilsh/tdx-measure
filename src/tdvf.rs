@@ -83,6 +83,34 @@ fn measure_tdx_efi_variable(vendor_guid: &str, var_name: &str, var_data: Option<
     Ok(measure_sha384(&data))
 }
 
+/// Parses BootOrder variable to extract boot entry numbers
+fn parse_boot_order(boot_order_data: &[u8]) -> Result<Vec<u16>> {
+    if boot_order_data.len() % 2 != 0 {
+        bail!("BootOrder data length must be even (array of UINT16s)");
+    }
+    
+    let mut boot_entries = Vec::new();
+    for chunk in boot_order_data.chunks(2) {
+        let entry_num = u16::from_le_bytes([chunk[0], chunk[1]]);
+        boot_entries.push(entry_num);
+    }
+    
+    Ok(boot_entries)
+}
+
+/// Loads boot variable data if the corresponding file exists
+fn load_boot_variable_if_exists(boot_entry_num: u16, machine: &Machine) -> Result<Option<Vec<u8>>> {
+    let filename = format!("{}Boot{:04}.bin", machine.path_boot_xxxx, boot_entry_num);
+    // Try to read the file, return None if it doesn't exist
+    match read_file_data(&filename) {
+        Ok(data) => Ok(Some(data)),
+        Err(_) => {
+            // File doesn't exist or can't be read, skip this boot entry
+            Ok(None)
+        }
+    }
+}
+
 impl<'a> Tdvf<'a> {
     pub fn parse(fw: &'a [u8]) -> Result<Tdvf<'a>> {
         const TDX_METADATA_OFFSET_GUID: &str = "e47a6535-984a-4798-865e-4685a7bf8ec2";
@@ -243,10 +271,9 @@ impl<'a> Tdvf<'a> {
         
         // Load boot variable data from files
         let boot_order_data = read_file_data(machine.boot_order)?;
-        let boot0007_data = read_file_data(machine.boot_0007)?;
-        let boot0001_data = read_file_data(machine.boot_0001)?;
-        let boot0000_data = read_file_data(machine.boot_0000)?;
-        let boot0006_data = read_file_data(machine.boot_0006)?;
+        
+        // Parse BootOrder to determine which boot variables to measure
+        let boot_entries = parse_boot_order(&boot_order_data)?;
 
         // Build ACPI tables
         let tables = machine.build_tables()?;
@@ -267,12 +294,15 @@ impl<'a> Tdvf<'a> {
             acpi_loader_hash,
             acpi_rsdp_hash,
             acpi_tables_hash,
-            measure_sha384(&boot_order_data),
-            measure_sha384(&boot0007_data),
-            measure_sha384(&boot0001_data),
-            measure_sha384(&boot0000_data),
-            measure_sha384(&boot0006_data),
+            measure_sha384(&boot_order_data), // Always measure BootOrder itself
         ];
+
+        // Dynamically add boot variable measurements based on BootOrder
+        for boot_entry_num in boot_entries {
+            if let Some(boot_data) = load_boot_variable_if_exists(boot_entry_num, machine)? {
+                rtmr0_log.push(measure_sha384(&boot_data));
+            }
+        }
 
         // Add SbatLevel if not direct boot
         if !machine.direct_boot {
