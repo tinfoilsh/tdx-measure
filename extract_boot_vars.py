@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import os
 import sys
+import struct
 
 def extract_boot_variable(var_name, output_file):
     efi_var_path = f"/sys/firmware/efi/efivars/{var_name}-8be4df61-93ca-11d2-aa0d-00e098032b8c"
@@ -31,6 +32,54 @@ def extract_boot_variable(var_name, output_file):
     except Exception as e:
         print(f"Error extracting {var_name}: {e}")
         return False
+
+def parse_boot_order(boot_order_data):
+    """Parse BootOrder variable to extract boot entry numbers"""
+    if len(boot_order_data) % 2 != 0:
+        raise ValueError("BootOrder data length must be even (array of UINT16s)")
+    
+    boot_entries = []
+    for i in range(0, len(boot_order_data), 2):
+        # Extract UINT16 in little-endian format
+        entry_num = struct.unpack('<H', boot_order_data[i:i+2])[0]
+        boot_entries.append(entry_num)
+    
+    return boot_entries
+
+def extract_boot_order_and_parse():
+    """Extract BootOrder variable and parse it to get boot entry numbers"""
+    print("Extracting BootOrder variable...")
+    
+    # Extract BootOrder first
+    if not extract_boot_variable("BootOrder", "BootOrder.bin"):
+        return []
+    
+    # Parse BootOrder to get boot entry numbers
+    try:
+        with open("BootOrder.bin", 'rb') as f:
+            boot_order_data = f.read()
+        
+        boot_entries = parse_boot_order(boot_order_data)
+        print(f"BootOrder contains {len(boot_entries)} boot entries: {[f'Boot{entry:04X}' for entry in boot_entries]}")
+        
+        return boot_entries
+    
+    except Exception as e:
+        print(f"Error parsing BootOrder: {e}")
+        return []
+
+def extract_boot_variable_if_exists(boot_entry_num):
+    """Extract a specific Boot variable if it exists"""
+    var_name = f"Boot{boot_entry_num:04X}"
+    output_file = f"{var_name}.bin"
+    
+    efi_var_path = f"/sys/firmware/efi/efivars/{var_name}-8be4df61-93ca-11d2-aa0d-00e098032b8c"
+    
+    if not os.path.exists(efi_var_path):
+        print(f"  {var_name} variable not found, skipping")
+        return False
+    
+    return extract_boot_variable(var_name, output_file)
 
 def extract_mok_variable(var_name, output_file):
     """Extract MOK variable from /sys/firmware/efi/mok-variables/"""
@@ -93,11 +142,20 @@ def main():
 
     print("Extracting Boot000X EFI variable data...")
 
-    variables = ["BootOrder", "Boot0007", "Boot0000", "Boot0001", "Boot0006"]
-
-    for var_name in variables:
-        output_file = f"{var_name}.bin"
-        extract_boot_variable(var_name, output_file)
+    # Extract BootOrder and parse it to get boot entry numbers
+    boot_entries = extract_boot_order_and_parse()
+    
+    if not boot_entries:
+        print("No boot entries found in BootOrder, falling back to common boot variables")
+        boot_entries = [0x0000, 0x0001, 0x0006, 0x0007]  # Common fallback entries
+    
+    print(f"\nExtracting Boot variables for entries: {[f'Boot{entry:04X}' for entry in boot_entries]}")
+    
+    # Extract boot variables dynamically based on BootOrder
+    extracted_variables = ["BootOrder"]  # BootOrder is always extracted
+    for boot_entry_num in boot_entries:
+        if extract_boot_variable_if_exists(boot_entry_num):
+            extracted_variables.append(f"Boot{boot_entry_num:04X}")
 
     print("\nExtracting MOK variables...")
 
@@ -124,7 +182,7 @@ def main():
     print("\nFiles created:")
     
     # Show EFI variable files
-    for var_name in variables:
+    for var_name in extracted_variables:
         output_file = f"{var_name}.bin"
         if os.path.exists(output_file):
             size = os.path.getsize(output_file)
