@@ -68,25 +68,48 @@ struct PathStorage {
 }
 
 impl PathResolver {
-    fn new(metadata_path: &Path, image_config: &ImageConfig) -> Result<Self> {
+    fn new(metadata_path: &Path, image_config: &ImageConfig, require_boot_info: bool) -> Result<Self> {
         let parent_dir = metadata_path.parent().unwrap_or(".".as_ref());
-        let boot_info = &image_config.boot_info;
         
-        let paths = PathStorage {
-            firmware: parent_dir.join(&boot_info.bios).display().to_string(),
-            cmdline: image_config.cmdline().to_string(),
-            acpi_tables: parent_dir.join(&boot_info.acpi_tables).display().to_string(),
-            rsdp: parent_dir.join(&boot_info.rsdp).display().to_string(),
-            table_loader: parent_dir.join(&boot_info.table_loader).display().to_string(),
-            boot_order: parent_dir.join(&boot_info.boot_order).display().to_string(),
-            path_boot_xxxx: parent_dir.join(&boot_info.path_boot_xxxx).display().to_string(),
-            kernel: image_config.direct_boot().map(|d| parent_dir.join(&d.kernel).display().to_string()),
-            initrd: image_config.direct_boot().map(|d| parent_dir.join(&d.initrd).display().to_string()),
-            qcow2: image_config.indirect_boot().map(|i| parent_dir.join(&i.qcow2).display().to_string()),
-            mok_list: image_config.indirect_boot().map(|i| parent_dir.join(&i.mok_list).display().to_string()),
-            mok_list_trusted: image_config.indirect_boot().map(|i| parent_dir.join(&i.mok_list_trusted).display().to_string()),
-            mok_list_x: image_config.indirect_boot().map(|i| parent_dir.join(&i.mok_list_x).display().to_string()),
-            sbat_level: image_config.indirect_boot().map(|i| parent_dir.join(&i.sbat_level).display().to_string()),
+        // Handle optional boot_info
+        let paths = if let Some(boot_info) = &image_config.boot_info {
+            PathStorage {
+                firmware: parent_dir.join(&boot_info.bios).display().to_string(),
+                cmdline: image_config.cmdline().to_string(),
+                acpi_tables: parent_dir.join(&boot_info.acpi_tables).display().to_string(),
+                rsdp: parent_dir.join(&boot_info.rsdp).display().to_string(),
+                table_loader: parent_dir.join(&boot_info.table_loader).display().to_string(),
+                boot_order: parent_dir.join(&boot_info.boot_order).display().to_string(),
+                path_boot_xxxx: parent_dir.join(&boot_info.path_boot_xxxx).display().to_string(),
+                kernel: image_config.direct_boot().map(|d| parent_dir.join(&d.kernel).display().to_string()),
+                initrd: image_config.direct_boot().map(|d| parent_dir.join(&d.initrd).display().to_string()),
+                qcow2: image_config.indirect_boot().map(|i| parent_dir.join(&i.qcow2).display().to_string()),
+                mok_list: image_config.indirect_boot().map(|i| parent_dir.join(&i.mok_list).display().to_string()),
+                mok_list_trusted: image_config.indirect_boot().map(|i| parent_dir.join(&i.mok_list_trusted).display().to_string()),
+                mok_list_x: image_config.indirect_boot().map(|i| parent_dir.join(&i.mok_list_x).display().to_string()),
+                sbat_level: image_config.indirect_boot().map(|i| parent_dir.join(&i.sbat_level).display().to_string()),
+            }
+        } else {
+            // When boot_info is None (runtime-only mode), provide empty strings for platform fields
+            if require_boot_info {
+                return Err(anyhow!("Boot info is required but not provided in the configuration"));
+            }
+            PathStorage {
+                firmware: String::new(),
+                cmdline: image_config.cmdline().to_string(),
+                acpi_tables: String::new(),
+                rsdp: String::new(),
+                table_loader: String::new(),
+                boot_order: String::new(),
+                path_boot_xxxx: String::new(),
+                kernel: image_config.direct_boot().map(|d| parent_dir.join(&d.kernel).display().to_string()),
+                initrd: image_config.direct_boot().map(|d| parent_dir.join(&d.initrd).display().to_string()),
+                qcow2: image_config.indirect_boot().map(|i| parent_dir.join(&i.qcow2).display().to_string()),
+                mok_list: image_config.indirect_boot().map(|i| parent_dir.join(&i.mok_list).display().to_string()),
+                mok_list_trusted: image_config.indirect_boot().map(|i| parent_dir.join(&i.mok_list_trusted).display().to_string()),
+                mok_list_x: image_config.indirect_boot().map(|i| parent_dir.join(&i.mok_list_x).display().to_string()),
+                sbat_level: image_config.indirect_boot().map(|i| parent_dir.join(&i.sbat_level).display().to_string()),
+            }
         };
         
         Ok(Self { paths })
@@ -121,18 +144,21 @@ fn process_measurements(config: &Cli, image_config: &ImageConfig) -> Result<()> 
     image_config.validate()
         .map_err(|e| anyhow!("Invalid image configuration: {}", e))?;
 
-    // Determine boot mode: CLI flag overrides JSON configuration
-    let direct_boot = config.direct_boot.unwrap_or(image_config.is_direct_boot());
-    
-    // Validate boot mode configuration
-    match (direct_boot, image_config.direct_boot(), image_config.indirect_boot()) {
-        (true, None, _) => return Err(anyhow!("Direct boot mode specified but no direct boot configuration found in JSON")),
-        (false, _, None) => return Err(anyhow!("Indirect boot mode specified but no indirect boot configuration found in JSON")),
-        _ => {}
+    let mut direct_boot = true; // Direct boot by default
+    if !config.platform_only { // If platform only, skip boot mode validation
+        // Determine boot mode: CLI flag overrides JSON configuration
+        direct_boot = config.direct_boot.unwrap_or(image_config.is_direct_boot());
+        
+        // Validate boot mode configuration
+        match (direct_boot, image_config.direct_boot(), image_config.indirect_boot()) {
+            (true, None, _) => return Err(anyhow!("Direct boot mode specified but no direct boot configuration found in JSON")),
+            (false, _, None) => return Err(anyhow!("Indirect boot mode specified but no indirect boot configuration found in JSON")),
+            _ => {}
+        }
     }
     
     // Build machine
-    let path_resolver = PathResolver::new(&config.metadata, image_config)?;
+    let path_resolver = PathResolver::new(&config.metadata, image_config, !config.runtime_only)?;
     let machine = path_resolver.build_machine(config, direct_boot);
     
     // Measure

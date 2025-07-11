@@ -63,7 +63,8 @@ pub struct IndirectBoot {
 /// Complete image configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ImageConfig {
-    pub boot_info: BootInfo,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub boot_info: Option<BootInfo>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub direct: Option<DirectBoot>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -77,7 +78,7 @@ impl ImageConfig {
             (Some(_), None) => Ok(()),
             (None, Some(_)) => Ok(()),
             (Some(_), Some(_)) => Err("Cannot specify both direct and indirect boot".to_string()),
-            (None, None) => Err("Must specify either direct or indirect boot".to_string()),
+            (None, None) => Ok(()),
         }
     }
 
