@@ -29,6 +29,8 @@ This project is a fork of dstack-mr from the [Dstack-TEE/dstack](https://github.
   -V, --version                    Print version
 ```
 
+WARNING: when running with `--runtime-only`, the tool will assume a VM memory size higher that 2.75GB.
+
 ### Required Binaries
 
 To correctly compute measurements, `tdx-measure` requires a set of binaries that correspond the platform/firmware configuration or to the image that is executed.
