@@ -7,14 +7,6 @@ use std::path::{Path, PathBuf};
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
 struct Cli {
-    /// Number of CPUs
-    #[arg(short, long, default_value = "1")]
-    cpu: u8,
-
-    /// Memory size in bytes
-    #[arg(short, long, default_value = "2G", value_parser = parse_memory_size)]
-    memory: u64,
-
     /// Path to metadata json file
     metadata: PathBuf,
 
@@ -48,7 +40,9 @@ struct PathResolver {
     paths: PathStorage,
 }
 
-struct PathStorage {
+struct PathStorage {    
+    cpu_count: u8,
+    memory_size: u64,
     firmware: String,
     cmdline: String,
     acpi_tables: String,
@@ -68,19 +62,21 @@ struct PathStorage {
 }
 
 impl PathResolver {
-    fn new(metadata_path: &Path, image_config: &ImageConfig, require_boot_info: bool) -> Result<Self> {
+    fn new(metadata_path: &Path, image_config: &ImageConfig, require_boot_config: bool) -> Result<Self> {
         let parent_dir = metadata_path.parent().unwrap_or(".".as_ref());
         
-        // Handle optional boot_info
-        let paths = if let Some(boot_info) = &image_config.boot_info {
+        // Handle optional boot_config
+        let paths = if let Some(boot_config) = &image_config.boot_config {
             PathStorage {
-                firmware: parent_dir.join(&boot_info.bios).display().to_string(),
+                cpu_count: boot_config.cpus,
+                memory_size: image_config.memory_size()?,
+                firmware: parent_dir.join(&boot_config.bios).display().to_string(),
                 cmdline: image_config.cmdline().to_string(),
-                acpi_tables: parent_dir.join(&boot_info.acpi_tables).display().to_string(),
-                rsdp: parent_dir.join(&boot_info.rsdp).display().to_string(),
-                table_loader: parent_dir.join(&boot_info.table_loader).display().to_string(),
-                boot_order: parent_dir.join(&boot_info.boot_order).display().to_string(),
-                path_boot_xxxx: parent_dir.join(&boot_info.path_boot_xxxx).display().to_string(),
+                acpi_tables: parent_dir.join(&boot_config.acpi_tables).display().to_string(),
+                rsdp: parent_dir.join(&boot_config.rsdp).display().to_string(),
+                table_loader: parent_dir.join(&boot_config.table_loader).display().to_string(),
+                boot_order: parent_dir.join(&boot_config.boot_order).display().to_string(),
+                path_boot_xxxx: parent_dir.join(&boot_config.path_boot_xxxx).display().to_string(),
                 kernel: image_config.direct_boot().map(|d| parent_dir.join(&d.kernel).display().to_string()),
                 initrd: image_config.direct_boot().map(|d| parent_dir.join(&d.initrd).display().to_string()),
                 qcow2: image_config.indirect_boot().map(|i| parent_dir.join(&i.qcow2).display().to_string()),
@@ -90,11 +86,13 @@ impl PathResolver {
                 sbat_level: image_config.indirect_boot().map(|i| parent_dir.join(&i.sbat_level).display().to_string()),
             }
         } else {
-            // When boot_info is None (runtime-only mode), provide empty strings for platform fields
-            if require_boot_info {
+            // When boot_config is None (runtime-only mode), provide empty strings for platform fields
+            if require_boot_config {
                 return Err(anyhow!("Boot info is required but not provided in the configuration"));
             }
             PathStorage {
+                cpu_count: 0,
+                memory_size: 0,
                 firmware: String::new(),
                 cmdline: image_config.cmdline().to_string(),
                 acpi_tables: String::new(),
@@ -117,8 +115,8 @@ impl PathResolver {
     
     fn build_machine(&self, config: &Cli, direct_boot: bool) -> Machine {
         Machine::builder()
-            .cpu_count(config.cpu)
-            .memory_size(config.memory)
+            .cpu_count(self.paths.cpu_count)
+            .memory_size(self.paths.memory_size)
             .firmware(&self.paths.firmware)
             .kernel_cmdline(&self.paths.cmdline)
             .acpi_tables(&self.paths.acpi_tables)
@@ -209,33 +207,4 @@ fn main() -> Result<()> {
     process_measurements(&cli, &image_config)?;
 
     Ok(())
-}
-
-/// Parse a memory size value that can be decimal or hexadecimal (with 0x prefix)
-fn parse_memory_size(s: &str) -> Result<u64> {
-    let s = s.trim();
-
-    if s.is_empty() {
-        return Err(anyhow!("Empty memory size"));
-    }
-    if s.starts_with("0x") || s.starts_with("0X") {
-        let hex_str = &s[2..];
-        return u64::from_str_radix(hex_str, 16)
-            .map_err(|e| anyhow!("Invalid hexadecimal value: {}", e));
-    }
-
-    if s.chars().all(|c| c.is_ascii_digit()) {
-        return Ok(s.parse::<u64>()?);
-    }
-    let len = s.len();
-    let (num_part, suffix) = match s.chars().last().unwrap() {
-        'k' | 'K' => (&s[0..len - 1], 1024u64),
-        'm' | 'M' => (&s[0..len - 1], 1024u64 * 1024),
-        'g' | 'G' => (&s[0..len - 1], 1024u64 * 1024 * 1024),
-        't' | 'T' => (&s[0..len - 1], 1024u64 * 1024 * 1024 * 1024),
-        _ => return Err(anyhow!("Unknown memory size suffix")),
-    };
-
-    let num = num_part.parse::<u64>()?;
-    Ok(num * suffix)
 }

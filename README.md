@@ -19,8 +19,6 @@ This project is a fork of dstack-mr from the [Dstack-TEE/dstack](https://github.
 
 ### Options
 ```
-  -c, --cpu <CPU>                  Number of CPUs [default: 1]
-  -m, --memory <MEMORY>            Memory size in bytes [default: 2G]
       --two-pass-add-pages         Enable two-pass add pages
       --direct-boot <BOOL>         Use direct/indirect boot method [true, false]
       --json                       Output JSON
@@ -47,7 +45,9 @@ These files follow standard formats that can easily be audited (for instance, AC
 
 ```
 {
-  "boot_info": {
+  "boot_config": {
+    "cpus": 32,
+    "memory": "10G",
     "bios": "OVMF.fd",
     "acpi_tables": "acpi_tables.bin",
     "rsdp": "rsdp.bin",
@@ -67,7 +67,9 @@ These files follow standard formats that can easily be audited (for instance, AC
 
 ```
 {
-  "boot_info": {
+  "boot_config": {
+    "cpus": 32,
+    "memory": "10G",
     "bios": "OVMF.fd",
     "acpi_tables": "acpi_tables.bin",
     "rsdp": "rsdp.bin",
