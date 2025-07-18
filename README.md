@@ -25,6 +25,7 @@ This project is a fork of dstack-mr from the [Dstack-TEE/dstack](https://github.
       --json-file <JSON_FILE>      Output JSON to file
       --platform-only              Compute MRTD and RTMR0 only
       --runtime-only               Compute RTMR1 and RTMR2 only
+      --transcript <TRANSCRIPT>    Generate a human-readable transcript of all metadata files and write to the specified file
   -h, --help                       Print help
   -V, --version                    Print version
 ```

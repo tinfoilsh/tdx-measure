@@ -4,6 +4,9 @@ use tdx_measure::{Machine, ImageConfig};
 use fs_err as fs;
 use std::path::{Path, PathBuf};
 
+mod transcript;
+use transcript::generate_transcript;
+
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
 struct Cli {
@@ -33,6 +36,10 @@ struct Cli {
     /// Compute RTMR1 and RTMR2 only
     #[arg(long)]
     runtime_only: bool,
+
+    /// Generate a human-readable transcript of all metadata files and write to the specified file
+    #[arg(long)]
+    transcript: Option<PathBuf>,
 }
 
 /// Helper struct to resolve and store file paths
@@ -158,6 +165,11 @@ fn process_measurements(config: &Cli, image_config: &ImageConfig) -> Result<()> 
     // Build machine
     let path_resolver = PathResolver::new(&config.metadata, image_config, !config.runtime_only)?;
     let machine = path_resolver.build_machine(config, direct_boot);
+
+    // Generate transcript
+    if let Some(ref transcript_file) = config.transcript {
+        return generate_transcript(transcript_file, &path_resolver, direct_boot, config.platform_only, config.runtime_only);
+    }
     
     // Measure
     let measurements = if config.platform_only {
