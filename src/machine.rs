@@ -88,7 +88,8 @@ impl Machine<'_> {
             let kernel_path = self.kernel.ok_or_else(|| anyhow::anyhow!("Kernel path required for direct boot"))?;
             let initrd_path = self.initrd.ok_or_else(|| anyhow::anyhow!("Initrd path required for direct boot"))?;
 
-            rtmr1 = kernel::measure_rtmr1_direct(kernel_path, initrd_path, self.memory_size, 0x28000)?;
+            // WARN : Carefull, when measuring the runtime only, we only compute the measurement for memory size > 0xb0000000
+            rtmr1 = kernel::measure_rtmr1_direct(kernel_path, initrd_path, 0xb0000000, 0x28000)?;
             rtmr2 = kernel::measure_rtmr2_direct(initrd_path, self.kernel_cmdline)?;
 
         } else { // Indirect boot

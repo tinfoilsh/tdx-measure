@@ -267,6 +267,8 @@ impl<'a> Tdvf<'a> {
 
     pub fn rtmr0(&self, machine: &Machine) -> Result<Vec<u8>> {
         let td_hob_hash = self.measure_td_hob(machine.memory_size)?;
+
+        // Hash of the Configuration Firmware Volume (default OVMF_VARS.fd in our case).
         let cfv_image_hash = hex!("344BC51C980BA621AAA00DA3ED7436F7D6E549197DFE699515DFA2C6583D95E6412AF21C097D473155875FFD561D6790");
         
         // Load boot variable data from files

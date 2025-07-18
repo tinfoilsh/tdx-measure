@@ -19,10 +19,8 @@ This project is a fork of dstack-mr from the [Dstack-TEE/dstack](https://github.
 
 ### Options
 ```
-  -c, --cpu <CPU>                  Number of CPUs [default: 1]
-  -m, --memory <MEMORY>            Memory size in bytes [default: 2G]
       --two-pass-add-pages         Enable two-pass add pages
-      --direct-boot <BOOL>         Use direct/indirect boot method [true, false]
+      --direct-boot <DIRECT_BOOT>  Enable direct boot (overrides JSON configuration) [possible values: true, false]
       --json                       Output JSON
       --json-file <JSON_FILE>      Output JSON to file
       --platform-only              Compute MRTD and RTMR0 only
@@ -30,6 +28,8 @@ This project is a fork of dstack-mr from the [Dstack-TEE/dstack](https://github.
   -h, --help                       Print help
   -V, --version                    Print version
 ```
+
+WARNING: when running with `--runtime-only`, the tool will assume a VM memory size higher that 2.75GB.
 
 ### Required Binaries
 
@@ -47,13 +47,15 @@ These files follow standard formats that can easily be audited (for instance, AC
 
 ```
 {
-  "boot_info": {
+  "boot_config": {
+    "cpus": 32,
+    "memory": "10G",
     "bios": "OVMF.fd",
     "acpi_tables": "acpi_tables.bin",
     "rsdp": "rsdp.bin",
     "table_loader": "table_loader.bin",
     "boot_order": "BootOrder.bin",
-    "path_boot_xxxx": [path for Boot_xxxx.bin variables],
+    "path_boot_xxxx": [path for Bootxxxx.bin variables],
   },
   "direct": {
     "kernel": "vmlinuz",
@@ -67,13 +69,15 @@ These files follow standard formats that can easily be audited (for instance, AC
 
 ```
 {
-  "boot_info": {
+  "boot_config": {
+    "cpus": 32,
+    "memory": "10G",
     "bios": "OVMF.fd",
     "acpi_tables": "acpi_tables.bin",
     "rsdp": "rsdp.bin",
     "table_loader": "table_loader.bin",
     "boot_order": "BootOrder.bin",
-    "path_boot_xxxx": [path for Boot_xxxx.bin variables],
+    "path_boot_xxxx": [path for Bootxxxx.bin variables],
   },
   "indirect": {
     "qcow2": "tdx-guest-ubuntu-24.04-generic.qcow2",
