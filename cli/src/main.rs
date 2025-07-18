@@ -43,11 +43,11 @@ struct Cli {
 }
 
 /// Helper struct to resolve and store file paths
-pub struct PathResolver {
-    pub paths: PathStorage,
+struct PathResolver {
+    paths: PathStorage,
 }
 
-pub struct PathStorage {    
+struct PathStorage {    
     cpu_count: u8,
     memory_size: u64,
     firmware: String,
@@ -58,14 +58,14 @@ pub struct PathStorage {
     boot_order: String,
     path_boot_xxxx: String,
     // Direct boot specific
-    pub kernel: Option<String>,
-    pub initrd: Option<String>,
+    kernel: Option<String>,
+    initrd: Option<String>,
     // Indirect boot specific
-    pub qcow2: Option<String>,
-    pub mok_list: Option<String>,
-    pub mok_list_trusted: Option<String>,
-    pub mok_list_x: Option<String>,
-    pub sbat_level: Option<String>,
+    qcow2: Option<String>,
+    mok_list: Option<String>,
+    mok_list_trusted: Option<String>,
+    mok_list_x: Option<String>,
+    sbat_level: Option<String>,
 }
 
 impl PathResolver {
