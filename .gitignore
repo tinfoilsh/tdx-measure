@@ -29,4 +29,7 @@ Thumbs.db
 # Binary files
 *.bin
 *.json
+
+# Output files
 *.txt
+*.out
