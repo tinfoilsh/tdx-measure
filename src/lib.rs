@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use serde_human_bytes as hex_bytes;
+use anyhow::{anyhow, Result};
 
 pub use machine::Machine;
 
@@ -20,6 +21,7 @@ pub struct TdxMeasurements {
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub mrtd: Vec<u8>,
     #[serde(with = "hex_bytes")]
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub rtmr0: Vec<u8>,
     #[serde(with = "hex_bytes")]
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -29,18 +31,17 @@ pub struct TdxMeasurements {
     pub rtmr2: Vec<u8>,
 }
 
-/// Common boot information (platform-specific)
+/// Common boot configuration (platform-specific)
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct BootInfo {
+pub struct BootConfig {
+    pub cpus: u8,
+    pub memory: String,
     pub bios: String,
     pub acpi_tables: String,
     pub rsdp: String,
     pub table_loader: String,
     pub boot_order: String,
-    pub boot_0000: String,
-    pub boot_0001: String,
-    pub boot_0006: String,
-    pub boot_0007: String,
+    pub path_boot_xxxx: String,
 }
 
 /// Direct boot specific information
@@ -65,7 +66,8 @@ pub struct IndirectBoot {
 /// Complete image configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ImageConfig {
-    pub boot_info: BootInfo,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub boot_config: Option<BootConfig>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub direct: Option<DirectBoot>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -79,7 +81,7 @@ impl ImageConfig {
             (Some(_), None) => Ok(()),
             (None, Some(_)) => Ok(()),
             (Some(_), Some(_)) => Err("Cannot specify both direct and indirect boot".to_string()),
-            (None, None) => Err("Must specify either direct or indirect boot".to_string()),
+            (None, None) => Ok(()),
         }
     }
 
@@ -106,4 +108,49 @@ impl ImageConfig {
             _ => "", // Should not happen after validation
         }
     }
+
+    /// Get CPU count from boot config
+    pub fn cpu_count(&self) -> Result<u8> {
+        let boot_config = self.boot_config.as_ref()
+            .ok_or_else(|| anyhow!("Boot config is required"))?;
+        
+        Ok(boot_config.cpus)
+    }
+
+    /// Get memory size from boot config
+    pub fn memory_size(&self) -> Result<u64> {
+        let boot_config = self.boot_config.as_ref()
+            .ok_or_else(|| anyhow!("Boot config is required"))?;
+        
+        parse_memory_size(&boot_config.memory)
+    }
+}
+
+/// Parse a memory size value that can be decimal or hexadecimal (with 0x prefix)
+pub fn parse_memory_size(s: &str) -> Result<u64> {
+    let s = s.trim();
+
+    if s.is_empty() {
+        return Err(anyhow!("Empty memory size"));
+    }
+    if s.starts_with("0x") || s.starts_with("0X") {
+        let hex_str = &s[2..];
+        return u64::from_str_radix(hex_str, 16)
+            .map_err(|e| anyhow!("Invalid hexadecimal value: {}", e));
+    }
+
+    if s.chars().all(|c| c.is_ascii_digit()) {
+        return Ok(s.parse::<u64>()?);
+    }
+    let len = s.len();
+    let (num_part, suffix) = match s.chars().last().unwrap() {
+        'k' | 'K' => (&s[0..len - 1], 1024u64),
+        'm' | 'M' => (&s[0..len - 1], 1024u64 * 1024),
+        'g' | 'G' => (&s[0..len - 1], 1024u64 * 1024 * 1024),
+        't' | 'T' => (&s[0..len - 1], 1024u64 * 1024 * 1024 * 1024),
+        _ => return Err(anyhow!("Unknown memory size suffix")),
+    };
+
+    let num = num_part.parse::<u64>()?;
+    Ok(num * suffix)
 }

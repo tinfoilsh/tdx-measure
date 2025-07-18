@@ -10,19 +10,11 @@ use transcript::generate_transcript;
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
 struct Cli {
-    /// Number of CPUs
-    #[arg(short, long, default_value = "1")]
-    cpu: u8,
-
-    /// Memory size in bytes
-    #[arg(short, long, default_value = "2G", value_parser = parse_memory_size)]
-    memory: u64,
-
     /// Path to metadata json file
     metadata: PathBuf,
 
     /// Enable two-pass add pages
-    #[arg(long, default_value = "true")]
+    #[arg(long)]
     two_pass_add_pages: bool,
 
     /// Enable direct boot (overrides JSON configuration)
@@ -44,6 +36,10 @@ struct Cli {
     /// Generate a human-readable transcript of all metadata files and write to the specified file
     #[arg(long)]
     transcript: Option<PathBuf>,
+    
+    /// Compute RTMR1 and RTMR2 only
+    #[arg(long)]
+    runtime_only: bool,
 }
 
 /// Helper struct to resolve and store file paths
@@ -51,17 +47,16 @@ pub struct PathResolver {
     pub paths: PathStorage,
 }
 
-pub struct PathStorage {
-    pub firmware: String,
-    pub cmdline: String,
-    pub acpi_tables: String,
-    pub rsdp: String,
-    pub table_loader: String,
-    pub boot_order: String,
-    pub boot_0000: String,
-    pub boot_0001: String,
-    pub boot_0006: String,
-    pub boot_0007: String,
+struct PathStorage {    
+    cpu_count: u8,
+    memory_size: u64,
+    firmware: String,
+    cmdline: String,
+    acpi_tables: String,
+    rsdp: String,
+    table_loader: String,
+    boot_order: String,
+    path_boot_xxxx: String,
     // Direct boot specific
     pub kernel: Option<String>,
     pub initrd: Option<String>,
@@ -74,28 +69,52 @@ pub struct PathStorage {
 }
 
 impl PathResolver {
-    pub fn new(metadata_path: &Path, image_config: &ImageConfig) -> Result<Self> {
+    fn new(metadata_path: &Path, image_config: &ImageConfig, require_boot_config: bool) -> Result<Self> {
         let parent_dir = metadata_path.parent().unwrap_or(".".as_ref());
-        let boot_info = &image_config.boot_info;
         
-        let paths = PathStorage {
-            firmware: parent_dir.join(&boot_info.bios).display().to_string(),
-            cmdline: image_config.cmdline().to_string(),
-            acpi_tables: parent_dir.join(&boot_info.acpi_tables).display().to_string(),
-            rsdp: parent_dir.join(&boot_info.rsdp).display().to_string(),
-            table_loader: parent_dir.join(&boot_info.table_loader).display().to_string(),
-            boot_order: parent_dir.join(&boot_info.boot_order).display().to_string(),
-            boot_0000: parent_dir.join(&boot_info.boot_0000).display().to_string(),
-            boot_0001: parent_dir.join(&boot_info.boot_0001).display().to_string(),
-            boot_0006: parent_dir.join(&boot_info.boot_0006).display().to_string(),
-            boot_0007: parent_dir.join(&boot_info.boot_0007).display().to_string(),
-            kernel: image_config.direct_boot().map(|d| parent_dir.join(&d.kernel).display().to_string()),
-            initrd: image_config.direct_boot().map(|d| parent_dir.join(&d.initrd).display().to_string()),
-            qcow2: image_config.indirect_boot().map(|i| parent_dir.join(&i.qcow2).display().to_string()),
-            mok_list: image_config.indirect_boot().map(|i| parent_dir.join(&i.mok_list).display().to_string()),
-            mok_list_trusted: image_config.indirect_boot().map(|i| parent_dir.join(&i.mok_list_trusted).display().to_string()),
-            mok_list_x: image_config.indirect_boot().map(|i| parent_dir.join(&i.mok_list_x).display().to_string()),
-            sbat_level: image_config.indirect_boot().map(|i| parent_dir.join(&i.sbat_level).display().to_string()),
+        // Handle optional boot_config
+        let paths = if let Some(boot_config) = &image_config.boot_config {
+            PathStorage {
+                cpu_count: boot_config.cpus,
+                memory_size: image_config.memory_size()?,
+                firmware: parent_dir.join(&boot_config.bios).display().to_string(),
+                cmdline: image_config.cmdline().to_string(),
+                acpi_tables: parent_dir.join(&boot_config.acpi_tables).display().to_string(),
+                rsdp: parent_dir.join(&boot_config.rsdp).display().to_string(),
+                table_loader: parent_dir.join(&boot_config.table_loader).display().to_string(),
+                boot_order: parent_dir.join(&boot_config.boot_order).display().to_string(),
+                path_boot_xxxx: parent_dir.join(&boot_config.path_boot_xxxx).display().to_string(),
+                kernel: image_config.direct_boot().map(|d| parent_dir.join(&d.kernel).display().to_string()),
+                initrd: image_config.direct_boot().map(|d| parent_dir.join(&d.initrd).display().to_string()),
+                qcow2: image_config.indirect_boot().map(|i| parent_dir.join(&i.qcow2).display().to_string()),
+                mok_list: image_config.indirect_boot().map(|i| parent_dir.join(&i.mok_list).display().to_string()),
+                mok_list_trusted: image_config.indirect_boot().map(|i| parent_dir.join(&i.mok_list_trusted).display().to_string()),
+                mok_list_x: image_config.indirect_boot().map(|i| parent_dir.join(&i.mok_list_x).display().to_string()),
+                sbat_level: image_config.indirect_boot().map(|i| parent_dir.join(&i.sbat_level).display().to_string()),
+            }
+        } else {
+            // When boot_config is None (runtime-only mode), provide empty strings for platform fields
+            if require_boot_config {
+                return Err(anyhow!("Boot info is required but not provided in the configuration"));
+            }
+            PathStorage {
+                cpu_count: 0,
+                memory_size: 0,
+                firmware: String::new(),
+                cmdline: image_config.cmdline().to_string(),
+                acpi_tables: String::new(),
+                rsdp: String::new(),
+                table_loader: String::new(),
+                boot_order: String::new(),
+                path_boot_xxxx: String::new(),
+                kernel: image_config.direct_boot().map(|d| parent_dir.join(&d.kernel).display().to_string()),
+                initrd: image_config.direct_boot().map(|d| parent_dir.join(&d.initrd).display().to_string()),
+                qcow2: image_config.indirect_boot().map(|i| parent_dir.join(&i.qcow2).display().to_string()),
+                mok_list: image_config.indirect_boot().map(|i| parent_dir.join(&i.mok_list).display().to_string()),
+                mok_list_trusted: image_config.indirect_boot().map(|i| parent_dir.join(&i.mok_list_trusted).display().to_string()),
+                mok_list_x: image_config.indirect_boot().map(|i| parent_dir.join(&i.mok_list_x).display().to_string()),
+                sbat_level: image_config.indirect_boot().map(|i| parent_dir.join(&i.sbat_level).display().to_string()),
+            }
         };
         
         Ok(Self { paths })
@@ -103,18 +122,15 @@ impl PathResolver {
     
     fn build_machine(&self, config: &Cli, direct_boot: bool) -> Machine {
         Machine::builder()
-            .cpu_count(config.cpu)
-            .memory_size(config.memory)
+            .cpu_count(self.paths.cpu_count)
+            .memory_size(self.paths.memory_size)
             .firmware(&self.paths.firmware)
             .kernel_cmdline(&self.paths.cmdline)
             .acpi_tables(&self.paths.acpi_tables)
             .rsdp(&self.paths.rsdp)
             .table_loader(&self.paths.table_loader)
             .boot_order(&self.paths.boot_order)
-            .boot_0000(&self.paths.boot_0000)
-            .boot_0001(&self.paths.boot_0001)
-            .boot_0006(&self.paths.boot_0006)
-            .boot_0007(&self.paths.boot_0007)
+            .path_boot_xxxx(&self.paths.path_boot_xxxx)
             .kernel(self.paths.kernel.as_deref().unwrap_or(""))
             .initrd(self.paths.initrd.as_deref().unwrap_or(""))
             .qcow2(self.paths.qcow2.as_deref().unwrap_or(""))
@@ -133,23 +149,28 @@ fn process_measurements(config: &Cli, image_config: &ImageConfig) -> Result<()> 
     image_config.validate()
         .map_err(|e| anyhow!("Invalid image configuration: {}", e))?;
 
-    // Determine boot mode: CLI flag overrides JSON configuration
-    let direct_boot = config.direct_boot.unwrap_or(image_config.is_direct_boot());
-    
-    // Validate boot mode configuration
-    match (direct_boot, image_config.direct_boot(), image_config.indirect_boot()) {
-        (true, None, _) => return Err(anyhow!("Direct boot mode specified but no direct boot configuration found in JSON")),
-        (false, _, None) => return Err(anyhow!("Indirect boot mode specified but no indirect boot configuration found in JSON")),
-        _ => {}
+    let mut direct_boot = true; // Direct boot by default
+    if !config.platform_only { // If platform only, skip boot mode validation
+        // Determine boot mode: CLI flag overrides JSON configuration
+        direct_boot = config.direct_boot.unwrap_or(image_config.is_direct_boot());
+        
+        // Validate boot mode configuration
+        match (direct_boot, image_config.direct_boot(), image_config.indirect_boot()) {
+            (true, None, _) => return Err(anyhow!("Direct boot mode specified but no direct boot configuration found in JSON")),
+            (false, _, None) => return Err(anyhow!("Indirect boot mode specified but no indirect boot configuration found in JSON")),
+            _ => {}
+        }
     }
     
     // Build machine
-    let path_resolver = PathResolver::new(&config.metadata, image_config)?;
+    let path_resolver = PathResolver::new(&config.metadata, image_config, !config.runtime_only)?;
     let machine = path_resolver.build_machine(config, direct_boot);
     
     // Measure
     let measurements = if config.platform_only {
         machine.measure_platform().context("Failed to measure platform")?
+    } else if config.runtime_only {
+        machine.measure_runtime().context("Failed to measure runtime")?
     } else {
         machine.measure().context("Failed to measure machine configuration")?
     };
@@ -198,33 +219,4 @@ fn main() -> Result<()> {
     process_measurements(&cli, &image_config)?;
 
     Ok(())
-}
-
-/// Parse a memory size value that can be decimal or hexadecimal (with 0x prefix)
-fn parse_memory_size(s: &str) -> Result<u64> {
-    let s = s.trim();
-
-    if s.is_empty() {
-        return Err(anyhow!("Empty memory size"));
-    }
-    if s.starts_with("0x") || s.starts_with("0X") {
-        let hex_str = &s[2..];
-        return u64::from_str_radix(hex_str, 16)
-            .map_err(|e| anyhow!("Invalid hexadecimal value: {}", e));
-    }
-
-    if s.chars().all(|c| c.is_ascii_digit()) {
-        return Ok(s.parse::<u64>()?);
-    }
-    let len = s.len();
-    let (num_part, suffix) = match s.chars().last().unwrap() {
-        'k' | 'K' => (&s[0..len - 1], 1024u64),
-        'm' | 'M' => (&s[0..len - 1], 1024u64 * 1024),
-        'g' | 'G' => (&s[0..len - 1], 1024u64 * 1024 * 1024),
-        't' | 'T' => (&s[0..len - 1], 1024u64 * 1024 * 1024 * 1024),
-        _ => return Err(anyhow!("Unknown memory size suffix")),
-    };
-
-    let num = num_part.parse::<u64>()?;
-    Ok(num * suffix)
 }
