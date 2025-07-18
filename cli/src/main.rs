@@ -33,13 +33,13 @@ struct Cli {
     #[arg(long)]
     platform_only: bool,
 
-    /// Generate a human-readable transcript of all metadata files and write to the specified file
-    #[arg(long)]
-    transcript: Option<PathBuf>,
-    
     /// Compute RTMR1 and RTMR2 only
     #[arg(long)]
     runtime_only: bool,
+
+    /// Generate a human-readable transcript of all metadata files and write to the specified file
+    #[arg(long)]
+    transcript: Option<PathBuf>,
 }
 
 /// Helper struct to resolve and store file paths
@@ -47,7 +47,7 @@ pub struct PathResolver {
     pub paths: PathStorage,
 }
 
-struct PathStorage {    
+pub struct PathStorage {    
     cpu_count: u8,
     memory_size: u64,
     firmware: String,
@@ -165,6 +165,11 @@ fn process_measurements(config: &Cli, image_config: &ImageConfig) -> Result<()> 
     // Build machine
     let path_resolver = PathResolver::new(&config.metadata, image_config, !config.runtime_only)?;
     let machine = path_resolver.build_machine(config, direct_boot);
+
+    // Generate transcript
+    if let Some(ref transcript_file) = config.transcript {
+        return generate_transcript(transcript_file, &path_resolver, direct_boot, config.platform_only, config.runtime_only);
+    }
     
     // Measure
     let measurements = if config.platform_only {
@@ -210,11 +215,6 @@ fn main() -> Result<()> {
         .context("Failed to read image metadata")?;
     let image_config: ImageConfig = serde_json::from_str(&metadata)
         .context("Failed to parse image metadata")?;
-    
-    // Handle transcript mode
-    if let Some(ref transcript_file) = cli.transcript {
-        return generate_transcript(transcript_file, &image_config, &cli.metadata);
-    }
     
     process_measurements(&cli, &image_config)?;
 
