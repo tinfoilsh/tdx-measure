@@ -44,6 +44,10 @@ Platform configuration files can be extracted by running the [`extract_boot_vars
 
 These files follow standard formats that can easily be audited (for instance, ACPI tables can be disassembled). Building tool to programmatically generate these files is future work.
 
+#### Transcript
+
+The transcript flag makes it possible to generate a human-readable transcript from the different binary configuration files. The command line tool `iasl` needs to be installed in order to disassembled the ACPI tables and include its representation in the transcript.
+
 #### Direct Boot Metadata
 
 ```
