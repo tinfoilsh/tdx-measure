@@ -20,7 +20,7 @@ This project is a fork of dstack-mr from the [Dstack-TEE/dstack](https://github.
 ### Options
 ```
       --two-pass-add-pages         Enable two-pass add pages
-      --direct-boot <BOOL>         Use direct/indirect boot method [true, false]
+      --direct-boot <DIRECT_BOOT>  Enable direct boot (overrides JSON configuration) [possible values: true, false]
       --json                       Output JSON
       --json-file <JSON_FILE>      Output JSON to file
       --platform-only              Compute MRTD and RTMR0 only
